@@ -165,7 +165,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun extractTarGz(inputStream: java.io.InputStream, destDir: File) {
-        // Extract to rootfs subdirectory since tar.gz doesn't contain the rootfs folder
+        // Extract to rootfs subdirectory since tar.gz contains /system directly
+        // (not /rootfs/system like the old 7z format)
         val rootfsDir = File(destDir, "rootfs")
         rootfsDir.mkdirs()
 
@@ -193,10 +194,10 @@ class MainActivity : AppCompatActivity() {
                             FileOutputStream(destFile).use { fos ->
                                 tarInputStream.copyTo(fos)
                             }
-                            // Preserve file permissions
+                            // Preserve file permissions (owner execute only)
                             val mode = entry.mode
                             if (mode and OWNER_EXECUTE_PERMISSION != 0) {
-                                destFile.setExecutable(true, false)
+                                destFile.setExecutable(true, true)
                             }
                         }
                     }
