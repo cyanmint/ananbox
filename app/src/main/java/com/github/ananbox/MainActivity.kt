@@ -159,41 +159,50 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun extractTarGz(inputStream: java.io.InputStream, destDir: File) {
-        val gzipInputStream = GZIPInputStream(BufferedInputStream(inputStream))
-        val tarInputStream = TarArchiveInputStream(gzipInputStream)
+    private companion object {
+        // Unix permission bit for owner execute (octal 0100)
+        private const val OWNER_EXECUTE_PERMISSION = 0b001_000_000
+    }
 
-        var entry = tarInputStream.nextTarEntry
-        while (entry != null) {
-            val destFile = File(destDir, entry.name)
-            if (entry.isDirectory) {
-                destFile.mkdirs()
-            } else {
-                destFile.parentFile?.mkdirs()
-                if (entry.isSymbolicLink) {
-                    // Handle symbolic links
-                    val linkTarget = entry.linkName
-                    try {
-                        java.nio.file.Files.createSymbolicLink(
-                            destFile.toPath(),
-                            java.nio.file.Paths.get(linkTarget)
-                        )
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to create symlink: ${destFile.path} -> $linkTarget")
+    private fun extractTarGz(inputStream: java.io.InputStream, destDir: File) {
+        // Extract to rootfs subdirectory since tar.gz doesn't contain the rootfs folder
+        val rootfsDir = File(destDir, "rootfs")
+        rootfsDir.mkdirs()
+
+        GZIPInputStream(BufferedInputStream(inputStream)).use { gzipInputStream ->
+            TarArchiveInputStream(gzipInputStream).use { tarInputStream ->
+                var entry = tarInputStream.nextTarEntry
+                while (entry != null) {
+                    val destFile = File(rootfsDir, entry.name)
+                    if (entry.isDirectory) {
+                        destFile.mkdirs()
+                    } else {
+                        destFile.parentFile?.mkdirs()
+                        if (entry.isSymbolicLink) {
+                            // Handle symbolic links
+                            val linkTarget = entry.linkName
+                            try {
+                                java.nio.file.Files.createSymbolicLink(
+                                    destFile.toPath(),
+                                    java.nio.file.Paths.get(linkTarget)
+                                )
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to create symlink: ${destFile.path} -> $linkTarget")
+                            }
+                        } else {
+                            FileOutputStream(destFile).use { fos ->
+                                tarInputStream.copyTo(fos)
+                            }
+                            // Preserve file permissions
+                            val mode = entry.mode
+                            if (mode and OWNER_EXECUTE_PERMISSION != 0) {
+                                destFile.setExecutable(true, false)
+                            }
+                        }
                     }
-                } else {
-                    FileOutputStream(destFile).use { fos ->
-                        tarInputStream.copyTo(fos)
-                    }
-                    // Preserve file permissions
-                    val mode = entry.mode
-                    if (mode and 0b001_000_000 != 0) {
-                        destFile.setExecutable(true, false)
-                    }
+                    entry = tarInputStream.nextTarEntry
                 }
             }
-            entry = tarInputStream.nextTarEntry
         }
-        tarInputStream.close()
     }
 }

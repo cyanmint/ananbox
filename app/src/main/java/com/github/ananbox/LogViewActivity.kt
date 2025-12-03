@@ -49,11 +49,12 @@ class LogViewActivity : AppCompatActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
+        return when (item.itemId) {
             android.R.id.home -> {
                 finish()
+                true
             }
+            else -> super.onOptionsItemSelected(item)
         }
-        return true
     }
 }
