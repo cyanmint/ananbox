@@ -64,7 +64,12 @@ class LogViewActivity : AppCompatActivity() {
                 raf.seek(file.length() - MAX_LOG_SIZE)
                 // Skip to next newline to avoid partial line
                 raf.readLine()
-                val remaining = ByteArray((file.length() - raf.filePointer).toInt())
+                val remainingSize = file.length() - raf.filePointer
+                // Safety check to prevent integer overflow
+                if (remainingSize > MAX_LOG_SIZE || remainingSize < 0) {
+                    return@use "[...truncated - file too large...]\n"
+                }
+                val remaining = ByteArray(remainingSize.toInt())
                 raf.readFully(remaining)
                 "[...truncated...]\n" + String(remaining, Charsets.UTF_8)
             }
