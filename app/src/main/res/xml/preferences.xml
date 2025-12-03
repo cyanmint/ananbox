@@ -2,9 +2,19 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <Preference
+        app:key="@string/settings_start_key"
+        app:title="@string/settings_start_title"
+        app:summary="@string/settings_start_summary"/>
+
+    <Preference
         app:key="@string/settings_logs_key"
         app:title="@string/settings_logs_title"
         app:summary="@string/settings_logs_summary"/>
+
+    <Preference
+        app:key="@string/settings_export_logs_key"
+        app:title="@string/settings_export_logs_title"
+        app:summary="@string/settings_export_logs_summary"/>
 
     <Preference
         app:key="@string/settings_shutdown_key"
