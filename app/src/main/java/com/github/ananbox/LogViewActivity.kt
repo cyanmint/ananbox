@@ -59,10 +59,14 @@ class LogViewActivity : AppCompatActivity() {
 
     private fun readLogFile(file: File): String {
         return if (file.length() > MAX_LOG_SIZE) {
-            // For large files, read only the last MAX_LOG_SIZE bytes
-            file.inputStream().use { stream ->
-                stream.skip(file.length() - MAX_LOG_SIZE)
-                "[...truncated...]\n" + stream.bufferedReader().readText()
+            // For large files, read only the last MAX_LOG_SIZE bytes using RandomAccessFile
+            java.io.RandomAccessFile(file, "r").use { raf ->
+                raf.seek(file.length() - MAX_LOG_SIZE)
+                // Skip to next newline to avoid partial line
+                raf.readLine()
+                val remaining = ByteArray((file.length() - raf.filePointer).toInt())
+                raf.readFully(remaining)
+                "[...truncated...]\n" + String(remaining, Charsets.UTF_8)
             }
         } else {
             file.readText()

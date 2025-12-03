@@ -88,7 +88,12 @@ class MainActivity : AppCompatActivity() {
                             Intent(Intent.ACTION_OPEN_DOCUMENT)
                                 .apply {
                                     addCategory(Intent.CATEGORY_OPENABLE)
-                                    setType("application/gzip")
+                                    setType("*/*")
+                                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                                        "application/gzip",
+                                        "application/x-gzip",
+                                        "application/x-compressed-tar"
+                                    ))
                                 },
                             READ_REQUEST_CODE
                         )
