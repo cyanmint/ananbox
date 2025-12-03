@@ -10,8 +10,11 @@ import android.view.MenuItem
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import java.io.BufferedReader
 import java.io.File
 import java.io.IOException
+import java.io.InputStreamReader
+import java.util.Date
 
 class LogViewActivity : AppCompatActivity() {
 
@@ -31,6 +34,16 @@ class LogViewActivity : AppCompatActivity() {
         val scrollView = findViewById<ScrollView>(R.id.log_scroll_view)
 
         val logContent = StringBuilder()
+        val verboseMode = SettingsActivity.isVerboseModeEnabled(this)
+
+        // Add device info header in verbose mode
+        if (verboseMode) {
+            logContent.append("=== Device Information ===\n")
+            logContent.append("Timestamp: ${Date()}\n")
+            logContent.append("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n")
+            logContent.append("Android: ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})\n")
+            logContent.append("Verbose Mode: Enabled\n\n")
+        }
 
         // Read proot.log from internal storage
         val prootLogFile = File(filesDir, "proot.log")
@@ -56,6 +69,37 @@ class LogViewActivity : AppCompatActivity() {
         } catch (e: IOException) {
             Log.e(TAG, "Failed to read system.log", e)
             logContent.append("Error reading system.log: ${e.message}\n\n")
+        }
+
+        // Read container.log if available
+        val containerLogFile = File(filesDir, "container.log")
+        try {
+            if (containerLogFile.exists()) {
+                logContent.append("=== container.log ===\n")
+                logContent.append(readLogFile(containerLogFile))
+                logContent.append("\n\n")
+            }
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to read container.log", e)
+            logContent.append("Error reading container.log: ${e.message}\n\n")
+        }
+
+        // In verbose mode, show additional diagnostic information
+        if (verboseMode) {
+            // Add process list
+            logContent.append("=== Running Processes ===\n")
+            logContent.append(collectProcessList())
+            logContent.append("\n")
+            
+            // Add container processes
+            logContent.append("=== Container Processes ===\n")
+            logContent.append(collectContainerProcesses())
+            logContent.append("\n")
+            
+            // Add logcat excerpt
+            logContent.append("=== Recent Logcat (Ananbox) ===\n")
+            logContent.append(collectLogcatExcerpt())
+            logContent.append("\n")
         }
 
         if (logContent.isEmpty()) {
@@ -89,6 +133,75 @@ class LogViewActivity : AppCompatActivity() {
             }
         } else {
             file.readText()
+        }
+    }
+
+    private fun collectProcessList(): String {
+        return try {
+            val process = Runtime.getRuntime().exec(arrayOf("ps", "-A"))
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            val output = StringBuilder()
+            reader.useLines { lines ->
+                lines.take(50).forEach { line ->  // Limit to first 50 lines for display
+                    output.append(line).append("\n")
+                }
+            }
+            process.waitFor()
+            if (output.isEmpty()) "No processes found\n" else output.toString()
+        } catch (e: Exception) {
+            "Failed to get process list: ${e.message}\n"
+        }
+    }
+
+    private fun collectContainerProcesses(): String {
+        val output = StringBuilder()
+        try {
+            val rootfsDir = File(filesDir, "rootfs")
+            if (rootfsDir.exists()) {
+                val procDir = File(rootfsDir, "proc")
+                if (procDir.exists() && procDir.isDirectory) {
+                    var count = 0
+                    procDir.listFiles()?.filter { it.name.matches(Regex("\\d+")) }?.forEach { pidDir ->
+                        if (count >= 30) return@forEach  // Limit for display
+                        try {
+                            val cmdlineFile = File(pidDir, "cmdline")
+                            if (cmdlineFile.exists()) {
+                                val cmdline = cmdlineFile.readText().replace('\u0000', ' ').trim()
+                                if (cmdline.isNotEmpty()) {
+                                    output.append("PID ${pidDir.name}: $cmdline\n")
+                                    count++
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // Ignore individual process read errors
+                        }
+                    }
+                }
+                if (output.isEmpty()) {
+                    output.append("No container processes found (container may not be running)\n")
+                }
+            } else {
+                output.append("Rootfs not installed\n")
+            }
+        } catch (e: Exception) {
+            output.append("Failed to read container processes: ${e.message}\n")
+        }
+        return output.toString()
+    }
+
+    private fun collectLogcatExcerpt(): String {
+        return try {
+            val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-v", "time", "-s", "libAnbox:*", "Anbox:*", "MainActivity:*", "SettingsActivity:*", "proot:*"))
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            val output = StringBuilder()
+            val linesList = reader.readLines()
+            linesList.takeLast(100).forEach { line: String ->
+                output.append(line).append("\n")
+            }
+            process.waitFor()
+            if (output.isEmpty()) "No relevant logcat entries found\n" else output.toString()
+        } catch (e: Exception) {
+            "Failed to collect logcat: ${e.message}\n"
         }
     }
 

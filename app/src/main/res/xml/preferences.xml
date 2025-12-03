@@ -6,6 +6,12 @@
         app:title="@string/settings_start_title"
         app:summary="@string/settings_start_summary"/>
 
+    <SwitchPreferenceCompat
+        app:key="@string/settings_verbose_key"
+        app:title="@string/settings_verbose_title"
+        app:summary="@string/settings_verbose_summary"
+        app:defaultValue="false"/>
+
     <Preference
         app:key="@string/settings_logs_key"
         app:title="@string/settings_logs_title"

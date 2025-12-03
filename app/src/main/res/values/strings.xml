@@ -14,7 +14,10 @@
     <string name="settings_logs_empty">No log files found</string>
     <string name="settings_export_logs_key">export_logs</string>
     <string name="settings_export_logs_title">Export Logs</string>
-    <string name="settings_export_logs_summary">Share log files</string>
+    <string name="settings_export_logs_summary">Share diagnostic logs as tarball</string>
+    <string name="settings_verbose_key">verbose_mode</string>
+    <string name="settings_verbose_title">Verbose Mode</string>
+    <string name="settings_verbose_summary">Enable detailed logging for debugging</string>
     <string name="rom_installer_title">Install rom</string>
     <string name="rom_installer_message">Please select the rootfs.tar.gz file on your phone</string>
     <string name="rom_installer_install">Select a file</string>
