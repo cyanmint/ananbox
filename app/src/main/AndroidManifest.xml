@@ -23,11 +23,17 @@
             android:label="@string/title_activity_settings"
             android:theme="@style/Theme.AppCompat.Light" />
 
+        <activity
+            android:name=".LogViewActivity"
+            android:exported="false"
+            android:label="@string/settings_logs_title"
+            android:theme="@style/Theme.AppCompat.Light" />
+
         <receiver
             android:name=".BinderReceiver"
             android:enabled="true"
             android:exported="true" />
-add
+
         <provider
             android:name=".StorageProvider"
             android:authorities="com.github.ananbox.documents"

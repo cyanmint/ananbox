@@ -17,10 +17,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.github.ananbox.databinding.ActivityMainBinding
-import com.hzy.libp7zip.P7ZipApi
+import java.io.BufferedInputStream
 import java.io.File
-import java.lang.String
-import java.util.Locale
+import java.io.FileOutputStream
+import java.util.zip.GZIPInputStream
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -87,7 +88,7 @@ class MainActivity : AppCompatActivity() {
                             Intent(Intent.ACTION_OPEN_DOCUMENT)
                                 .apply {
                                     addCategory(Intent.CATEGORY_OPENABLE)
-                                    setType("application/x-7z-compressed")
+                                    setType("application/gzip")
                                 },
                             READ_REQUEST_CODE
                         )
@@ -144,26 +145,55 @@ class MainActivity : AppCompatActivity() {
                     show()
                 }
                 thread {
-                    val romFile = File(filesDir, "rootfs.7z")
                     val tmpDir = File(filesDir, "tmp")
                     val inputStream = contentResolver.openInputStream(uri)
-                    val outputStream = romFile.outputStream()
                     if (inputStream != null) {
-                        inputStream.copyTo(outputStream)
-                        val cpu = Runtime.getRuntime().availableProcessors()
-                        P7ZipApi.executeCommand(
-                            String.format(
-                                Locale.US, "7z x -mmt=%d -aoa '%s' '-o%s'",
-                                cpu, romFile.absolutePath, filesDir
-                            )
-                        )
+                        extractTarGz(inputStream, filesDir)
+                        inputStream.close()
                         progressDialog.dismiss()
-                        romFile.delete()
                         tmpDir.mkdir()
                         runOnUiThread() { recreate() }
                     }
                 }
             }
         }
+    }
+
+    private fun extractTarGz(inputStream: java.io.InputStream, destDir: File) {
+        val gzipInputStream = GZIPInputStream(BufferedInputStream(inputStream))
+        val tarInputStream = TarArchiveInputStream(gzipInputStream)
+
+        var entry = tarInputStream.nextTarEntry
+        while (entry != null) {
+            val destFile = File(destDir, entry.name)
+            if (entry.isDirectory) {
+                destFile.mkdirs()
+            } else {
+                destFile.parentFile?.mkdirs()
+                if (entry.isSymbolicLink) {
+                    // Handle symbolic links
+                    val linkTarget = entry.linkName
+                    try {
+                        java.nio.file.Files.createSymbolicLink(
+                            destFile.toPath(),
+                            java.nio.file.Paths.get(linkTarget)
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to create symlink: ${destFile.path} -> $linkTarget")
+                    }
+                } else {
+                    FileOutputStream(destFile).use { fos ->
+                        tarInputStream.copyTo(fos)
+                    }
+                    // Preserve file permissions
+                    val mode = entry.mode
+                    if (mode and 0b001_000_000 != 0) {
+                        destFile.setExecutable(true, false)
+                    }
+                }
+            }
+            entry = tarInputStream.nextTarEntry
+        }
+        tarInputStream.close()
     }
 }

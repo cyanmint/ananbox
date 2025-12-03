@@ -14,11 +14,17 @@ class SettingsActivity : AppCompatActivity() {
             setPreferencesFromResource(R.xml.preferences, rootKey)
 
             val shutdown = preferenceScreen.findPreference<Preference>(getString(R.string.settings_shutdown_key))
+            val viewLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_logs_key))
 
             shutdown?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
                 activity?.finishAffinity()
                 Anbox.stopRuntime()
                 Anbox.stopContainer()
+                true
+            }
+
+            viewLogs?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                startActivity(Intent(activity, LogViewActivity::class.java))
                 true
             }
 
