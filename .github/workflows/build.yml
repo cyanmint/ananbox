@@ -37,6 +37,14 @@ jobs:
       run: |
         sdkmanager --install "ndk;25.2.9519653" "cmake;3.22.1"
 
+    - name: Download and setup Boost
+      run: |
+        cd app/src/main/cpp
+        wget -q https://github.com/boostorg/boost/releases/download/boost-1.83.0/boost-1.83.0.tar.xz
+        tar -xf boost-1.83.0.tar.xz
+        mv boost-1.83.0 boost
+        rm boost-1.83.0.tar.xz
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
