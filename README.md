@@ -29,9 +29,9 @@ Android 11, 12
 
 ## How to use
 
-Build or Download the app and the rootfs.7z of corresponding architecture. The app provides the option to import the ROM the first time you boot. 
+Build or Download the app and the rootfs.tar.gz of corresponding architecture. The app provides the option to import the ROM the first time you boot. 
 
-Click the bottom-right button to launch the Settings Activity, where you can shutdown the container gracefully.
+Click the bottom-right button to launch the Settings Activity, where you can shutdown the container gracefully or view logs.
 
 ## Debug
 

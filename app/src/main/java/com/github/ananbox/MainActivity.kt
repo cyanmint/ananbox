@@ -17,10 +17,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.github.ananbox.databinding.ActivityMainBinding
-import com.hzy.libp7zip.P7ZipApi
+import java.io.BufferedInputStream
 import java.io.File
-import java.lang.String
-import java.util.Locale
+import java.io.FileOutputStream
+import java.util.zip.GZIPInputStream
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -87,7 +88,12 @@ class MainActivity : AppCompatActivity() {
                             Intent(Intent.ACTION_OPEN_DOCUMENT)
                                 .apply {
                                     addCategory(Intent.CATEGORY_OPENABLE)
-                                    setType("application/x-7z-compressed")
+                                    setType("*/*")
+                                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                                        "application/gzip",
+                                        "application/x-gzip",
+                                        "application/x-compressed-tar"
+                                    ))
                                 },
                             READ_REQUEST_CODE
                         )
@@ -144,24 +150,79 @@ class MainActivity : AppCompatActivity() {
                     show()
                 }
                 thread {
-                    val romFile = File(filesDir, "rootfs.7z")
                     val tmpDir = File(filesDir, "tmp")
                     val inputStream = contentResolver.openInputStream(uri)
-                    val outputStream = romFile.outputStream()
                     if (inputStream != null) {
-                        inputStream.copyTo(outputStream)
-                        val cpu = Runtime.getRuntime().availableProcessors()
-                        P7ZipApi.executeCommand(
-                            String.format(
-                                Locale.US, "7z x -mmt=%d -aoa '%s' '-o%s'",
-                                cpu, romFile.absolutePath, filesDir
-                            )
-                        )
+                        extractTarGz(inputStream, filesDir)
+                        inputStream.close()
                         progressDialog.dismiss()
-                        romFile.delete()
                         tmpDir.mkdir()
                         runOnUiThread() { recreate() }
                     }
+                }
+            }
+        }
+    }
+
+    private companion object {
+        // Unix permission bit for owner execute (octal 0100)
+        private const val OWNER_EXECUTE_PERMISSION = 0b001_000_000
+    }
+
+    private fun extractTarGz(inputStream: java.io.InputStream, destDir: File) {
+        // Extract to rootfs subdirectory since tar.gz contains /system directly
+        // (not /rootfs/system like the old 7z format)
+        val rootfsDir = File(destDir, "rootfs")
+        rootfsDir.mkdirs()
+        val rootfsCanonicalPath = rootfsDir.canonicalPath
+
+        GZIPInputStream(BufferedInputStream(inputStream)).use { gzipInputStream ->
+            TarArchiveInputStream(gzipInputStream).use { tarInputStream ->
+                var entry = tarInputStream.nextTarEntry
+                while (entry != null) {
+                    val destFile = File(rootfsDir, entry.name)
+                    
+                    // Validate path to prevent path traversal attacks
+                    if (!destFile.canonicalPath.startsWith(rootfsCanonicalPath)) {
+                        Log.w(TAG, "Skipping entry outside destination: ${entry.name}")
+                        entry = tarInputStream.nextTarEntry
+                        continue
+                    }
+                    
+                    if (entry.isDirectory) {
+                        destFile.mkdirs()
+                    } else {
+                        destFile.parentFile?.mkdirs()
+                        if (entry.isSymbolicLink) {
+                            // Handle symbolic links with validation
+                            val linkTarget = entry.linkName
+                            val resolvedTarget = destFile.parentFile?.resolve(linkTarget)?.canonicalFile
+                            
+                            // Validate symlink target to prevent escape attacks
+                            if (resolvedTarget == null || !resolvedTarget.canonicalPath.startsWith(rootfsCanonicalPath)) {
+                                Log.w(TAG, "Skipping unsafe symlink: ${destFile.path} -> $linkTarget")
+                            } else {
+                                try {
+                                    java.nio.file.Files.createSymbolicLink(
+                                        destFile.toPath(),
+                                        java.nio.file.Paths.get(linkTarget)
+                                    )
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Failed to create symlink: ${destFile.path} -> $linkTarget")
+                                }
+                            }
+                        } else {
+                            FileOutputStream(destFile).use { fos ->
+                                tarInputStream.copyTo(fos)
+                            }
+                            // Preserve file permissions (owner execute only)
+                            val mode = entry.mode
+                            if (mode and OWNER_EXECUTE_PERMISSION != 0) {
+                                destFile.setExecutable(true, true)
+                            }
+                        }
+                    }
+                    entry = tarInputStream.nextTarEntry
                 }
             }
         }
