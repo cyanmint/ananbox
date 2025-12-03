@@ -174,26 +174,42 @@ class MainActivity : AppCompatActivity() {
         // (not /rootfs/system like the old 7z format)
         val rootfsDir = File(destDir, "rootfs")
         rootfsDir.mkdirs()
+        val rootfsCanonicalPath = rootfsDir.canonicalPath
 
         GZIPInputStream(BufferedInputStream(inputStream)).use { gzipInputStream ->
             TarArchiveInputStream(gzipInputStream).use { tarInputStream ->
                 var entry = tarInputStream.nextTarEntry
                 while (entry != null) {
                     val destFile = File(rootfsDir, entry.name)
+                    
+                    // Validate path to prevent path traversal attacks
+                    if (!destFile.canonicalPath.startsWith(rootfsCanonicalPath)) {
+                        Log.w(TAG, "Skipping entry outside destination: ${entry.name}")
+                        entry = tarInputStream.nextTarEntry
+                        continue
+                    }
+                    
                     if (entry.isDirectory) {
                         destFile.mkdirs()
                     } else {
                         destFile.parentFile?.mkdirs()
                         if (entry.isSymbolicLink) {
-                            // Handle symbolic links
+                            // Handle symbolic links with validation
                             val linkTarget = entry.linkName
-                            try {
-                                java.nio.file.Files.createSymbolicLink(
-                                    destFile.toPath(),
-                                    java.nio.file.Paths.get(linkTarget)
-                                )
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to create symlink: ${destFile.path} -> $linkTarget")
+                            val resolvedTarget = destFile.parentFile?.resolve(linkTarget)?.canonicalFile
+                            
+                            // Validate symlink target to prevent escape attacks
+                            if (resolvedTarget == null || !resolvedTarget.canonicalPath.startsWith(rootfsCanonicalPath)) {
+                                Log.w(TAG, "Skipping unsafe symlink: ${destFile.path} -> $linkTarget")
+                            } else {
+                                try {
+                                    java.nio.file.Files.createSymbolicLink(
+                                        destFile.toPath(),
+                                        java.nio.file.Paths.get(linkTarget)
+                                    )
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Failed to create symlink: ${destFile.path} -> $linkTarget")
+                                }
                             }
                         } else {
                             FileOutputStream(destFile).use { fos ->

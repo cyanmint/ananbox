@@ -5,15 +5,18 @@
 package com.github.ananbox
 
 import android.os.Bundle
+import android.util.Log
 import android.view.MenuItem
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
+import java.io.IOException
 
 class LogViewActivity : AppCompatActivity() {
 
     private companion object {
+        private const val TAG = "LogViewActivity"
         // Maximum log file size to read (1MB)
         private const val MAX_LOG_SIZE = 1024 * 1024L
     }
@@ -31,18 +34,28 @@ class LogViewActivity : AppCompatActivity() {
 
         // Read proot.log from internal storage
         val prootLogFile = File(filesDir, "proot.log")
-        if (prootLogFile.exists()) {
-            logContent.append("=== proot.log ===\n")
-            logContent.append(readLogFile(prootLogFile))
-            logContent.append("\n\n")
+        try {
+            if (prootLogFile.exists()) {
+                logContent.append("=== proot.log ===\n")
+                logContent.append(readLogFile(prootLogFile))
+                logContent.append("\n\n")
+            }
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to read proot.log", e)
+            logContent.append("Error reading proot.log: ${e.message}\n\n")
         }
 
         // Read system.log from rootfs/data
         val systemLogFile = File(filesDir, "rootfs/data/system.log")
-        if (systemLogFile.exists()) {
-            logContent.append("=== system.log ===\n")
-            logContent.append(readLogFile(systemLogFile))
-            logContent.append("\n\n")
+        try {
+            if (systemLogFile.exists()) {
+                logContent.append("=== system.log ===\n")
+                logContent.append(readLogFile(systemLogFile))
+                logContent.append("\n\n")
+            }
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to read system.log", e)
+            logContent.append("Error reading system.log: ${e.message}\n\n")
         }
 
         if (logContent.isEmpty()) {
@@ -57,6 +70,7 @@ class LogViewActivity : AppCompatActivity() {
         }
     }
 
+    @Throws(IOException::class)
     private fun readLogFile(file: File): String {
         return if (file.length() > MAX_LOG_SIZE) {
             // For large files, read only the last MAX_LOG_SIZE bytes using RandomAccessFile
