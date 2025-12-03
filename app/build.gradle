@@ -5,13 +5,12 @@ plugins {
 
 android {
     namespace 'com.github.ananbox'
-    compileSdk 32
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.github.ananbox"
-        minSdk 23
-        //noinspection ExpiredTargetSdkVersion
-        targetSdk 28
+        minSdk 24
+        targetSdk 34
         versionCode 1
         versionName "1.0"
 
@@ -35,11 +34,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
     externalNativeBuild {
         cmake {
@@ -50,8 +49,9 @@ android {
     buildFeatures {
         viewBinding true
         aidl true
+        buildConfig true
     }
-    packagingOptions {
+    packaging {
         jniLibs {
             useLegacyPackaging = true
         }
@@ -60,9 +60,9 @@ android {
 
 dependencies {
 
-    implementation 'androidx.core:core-ktx:1.7.0'
-    implementation 'androidx.appcompat:appcompat:1.5.0'
-    implementation 'com.google.android.material:material:1.8.0'
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'com.fpliu.ndk.pkg.prefab.android.21:libpng:1.6.37'
     testImplementation 'junit:junit:4.13.2'
