@@ -10,7 +10,7 @@
     <string name="settings_logs_summary">View system and proot logs</string>
     <string name="settings_logs_empty">No log files found</string>
     <string name="rom_installer_title">Install rom</string>
-    <string name="rom_installer_message">Please select a rom file (.tar.gz) on your phone</string>
+    <string name="rom_installer_message">Please select the rootfs.tar.gz file on your phone</string>
     <string name="rom_installer_install">Select a file</string>
     <string name="rom_installer_extracting_title">Extracting</string>
     <string name="rom_installer_extracting_msg">Extracting rom file..</string>
