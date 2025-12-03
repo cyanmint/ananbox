@@ -45,6 +45,12 @@ jobs:
         mv boost-1.83.0 boost
         rm boost-1.83.0.tar.xz
 
+    - name: Remove swig to disable proot Python extension
+      run: |
+        # Remove swig to prevent proot from trying to build Python extension
+        # which is not compatible with Android cross-compilation
+        sudo apt-get remove -y swig swig4.0 || true
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
