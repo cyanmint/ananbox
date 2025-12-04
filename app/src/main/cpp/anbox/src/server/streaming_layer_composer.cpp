@@ -9,7 +9,11 @@
  */
 
 #include "server/streaming_layer_composer.h"
+#include "anbox/graphics/emugl/Renderer.h"
 #include "anbox/logger.h"
+
+#include <GLES2/gl2.h>
+#include <cstring>
 
 namespace anbox::server {
 
@@ -46,37 +50,91 @@ void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
     uint32_t width = rect_->width();
     uint32_t height = rect_->height();
     
-    // Read pixels from the current framebuffer after rendering
-    // The Renderer should have already rendered the layers
-    // We need to hook into the rendering process to capture frames
-    
-    // For now, just call the base class to render (it won't do anything without a window)
-    // and signal that we would like to capture frames
-    
-    // TODO: Implement proper offscreen rendering
-    // This requires modifying the Renderer to support offscreen targets
-    // or using an EGL Pbuffer surface
-    
     DEBUG("submit_layers called with %zu renderables", renderables.size());
     
-    // Fill with a test pattern for now to verify the streaming works
-    // In production, this would be replaced with actual frame capture
-    static uint32_t frame_count = 0;
-    frame_count++;
+    // Clear the frame buffer first (black background)
+    std::memset(pixel_buffer_.data(), 0, pixel_buffer_.size());
     
-    // Create a simple gradient pattern
-    for (uint32_t y = 0; y < height; y++) {
-        for (uint32_t x = 0; x < width; x++) {
-            uint32_t offset = (y * width + x) * 4;
-            // RGBA
-            pixel_buffer_[offset + 0] = static_cast<uint8_t>((x + frame_count) % 256);     // R
-            pixel_buffer_[offset + 1] = static_cast<uint8_t>((y + frame_count) % 256);     // G
-            pixel_buffer_[offset + 2] = static_cast<uint8_t>((x + y + frame_count) % 256); // B
-            pixel_buffer_[offset + 3] = 255;  // A
-        }
+    if (renderables.empty()) {
+        // No renderables, send black frame
+        uint32_t stride = width * 4;
+        frame_callback_(pixel_buffer_.data(), width, height, stride);
+        return;
     }
     
-    // Call the frame callback with the pixel data
+    // Composite all renderables into the frame buffer
+    // Find the topmost renderable that covers the full screen, or composite all
+    for (const auto& r : renderables) {
+        if (r.buffer() == 0) {
+            continue;
+        }
+        
+        // Get the screen position and crop for this renderable
+        auto screen_pos = r.screen_position();
+        auto crop = r.crop();
+        
+        // Get buffer dimensions from crop if available, otherwise use screen position
+        int buf_width = crop.width() > 0 ? crop.width() : screen_pos.width();
+        int buf_height = crop.height() > 0 ? crop.height() : screen_pos.height();
+        
+        if (buf_width <= 0 || buf_height <= 0) {
+            continue;
+        }
+        
+        // Allocate temporary buffer for this renderable
+        std::vector<uint8_t> temp_buffer(buf_width * buf_height * 4);
+        
+        // Read the color buffer content
+        renderer_->readColorBuffer(r.buffer(), 
+                                   crop.left() > 0 ? crop.left() : 0,
+                                   crop.top() > 0 ? crop.top() : 0,
+                                   buf_width, buf_height,
+                                   GL_RGBA, GL_UNSIGNED_BYTE,
+                                   temp_buffer.data());
+        
+        // Composite this buffer onto the final frame
+        int dest_x = screen_pos.left();
+        int dest_y = screen_pos.top();
+        
+        for (int y = 0; y < buf_height && dest_y + y < static_cast<int>(height); y++) {
+            for (int x = 0; x < buf_width && dest_x + x < static_cast<int>(width); x++) {
+                if (dest_x + x < 0 || dest_y + y < 0) continue;
+                
+                size_t src_offset = (y * buf_width + x) * 4;
+                size_t dst_offset = ((dest_y + y) * width + (dest_x + x)) * 4;
+                
+                // Simple alpha blending
+                uint8_t src_a = temp_buffer[src_offset + 3];
+                if (src_a == 0) continue;
+                
+                if (src_a == 255) {
+                    // Fully opaque, just copy
+                    pixel_buffer_[dst_offset + 0] = temp_buffer[src_offset + 0];
+                    pixel_buffer_[dst_offset + 1] = temp_buffer[src_offset + 1];
+                    pixel_buffer_[dst_offset + 2] = temp_buffer[src_offset + 2];
+                    pixel_buffer_[dst_offset + 3] = 255;
+                } else {
+                    // Alpha blend
+                    uint8_t dst_a = pixel_buffer_[dst_offset + 3];
+                    float alpha = src_a / 255.0f;
+                    float inv_alpha = 1.0f - alpha;
+                    
+                    pixel_buffer_[dst_offset + 0] = static_cast<uint8_t>(
+                        temp_buffer[src_offset + 0] * alpha + pixel_buffer_[dst_offset + 0] * inv_alpha);
+                    pixel_buffer_[dst_offset + 1] = static_cast<uint8_t>(
+                        temp_buffer[src_offset + 1] * alpha + pixel_buffer_[dst_offset + 1] * inv_alpha);
+                    pixel_buffer_[dst_offset + 2] = static_cast<uint8_t>(
+                        temp_buffer[src_offset + 2] * alpha + pixel_buffer_[dst_offset + 2] * inv_alpha);
+                    pixel_buffer_[dst_offset + 3] = 255;
+                }
+            }
+        }
+        
+        DEBUG("Composited renderable '%s' buffer=%u at (%d,%d) size %dx%d",
+              r.name().c_str(), r.buffer(), dest_x, dest_y, buf_width, buf_height);
+    }
+    
+    // Call the frame callback with the composited pixel data
     uint32_t stride = width * 4; // RGBA = 4 bytes per pixel
     frame_callback_(pixel_buffer_.data(), width, height, stride);
 }
