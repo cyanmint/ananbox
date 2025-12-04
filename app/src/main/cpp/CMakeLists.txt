@@ -4,14 +4,21 @@
 # Sets the minimum version of CMake required to build the native library.
 
 cmake_minimum_required(VERSION 3.22)
+
+# Suppress CMake developer warnings
+if(POLICY CMP0115)
+    cmake_policy(SET CMP0115 NEW)
+endif()
+set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS ON CACHE BOOL "" FORCE)
+
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 enable_language( C CXX ASM )
 
-# Suppress excessive warnings in third-party code
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")
+# Suppress all warnings in third-party code (including -Wunused-variable)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w -Wno-unused-variable")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w -Wno-unused-variable")
 
 # Declares and names the project.
 

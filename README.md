@@ -2,6 +2,10 @@
 
 **Another rootless Android container on android**
 
+[![Build Android App](https://github.com/cyanmint/ananbox/actions/workflows/build.yml/badge.svg)](https://github.com/cyanmint/ananbox/actions/workflows/build.yml)
+
+**Version 0.2.0**
+
 Ananbox is a fork version of Anbox, with some modifications to get it run on Android rootlessly. And proot is now used to enforce the storage isolation.
 
 ## Status
@@ -9,13 +13,8 @@ WIP. The container can boot, but still buggy.
 
 Most of the Android security features are missing becuase the current implementation of binder inside the container.
 
-### Supported System Component
-- Binder
-- Graphics (forked from anbox)
-- Wifi Simulation (still buggy)
-
 ### Supported Host Android version
-Android 11, 12
+Android 11, 12, 15
 
 (More version is coming soon.., theoretically it can support android 7.0 and newer)
 
@@ -26,6 +25,7 @@ Android 11, 12
 ## Feature
 - FOSS (Both the app & the internal ROM), you can build everything from source, and everything is under your control.
 - Customizable, you can customize both the app and the internal ROM.
+- **Self-contained**: All dependencies (anbox, boost, proot) are vendored for reproducible builds
 - **Log Viewer**: View proot and system logs directly in the app
 - **Log Export**: Export diagnostic logs as a compressed tarball for debugging
 - **Verbose Mode**: Enable detailed logging for troubleshooting
@@ -179,20 +179,35 @@ The project uses Gradle for building. C++ warnings from third-party code are sup
 ./gradlew assembleDebug
 ```
 
-## Recent Changes
+## Changelog
 
-### Bug Fixes
-- Fixed blank black screen issue by ensuring required directories (`tmp` and `rootfs/mnt/user/0`) exist before container starts
+### Version 0.2.0
+
+#### New Features
+- **Standalone Server Mode**: Run containers on a separate machine and stream to clients
+- **Remote Client Mode**: Connect to a remote Ananbox server for streaming
+- **ADB Forwarding**: Forward ADB connections from TCP port to container's ADB socket
+- **scrcpy Support**: Connect via ADB for better performance with scrcpy
+- **Log Viewer**: View proot and system logs directly in the app
+- **Log Export**: Export diagnostic logs as a compressed tarball for debugging
+- **Verbose Mode**: Enable detailed logging for troubleshooting
+- **Self-contained Build**: Vendored all dependencies (anbox, boost, proot) for reproducible builds
+
+#### Bug Fixes
+- Fixed local JNI mode container startup by properly setting `PROOT_TMP_DIR` environment variable
+- Fixed blank black screen issue by ensuring required directories exist before container starts
 - Improved symlink handling during rootfs extraction with better validation
 - Fixed symlink creation to properly handle relative paths
 
-### New Features
-- Added `LogViewActivity` for viewing logs in-app
-- Added log export functionality with diagnostic information
-- Added verbose mode toggle in settings
-- Added standalone server for running containers remotely
-- Added remote client mode to connect to external servers
-- Added TCP streaming protocol for graphics, audio, and input
+#### Build Improvements
+- Vendored proot source code to make the project self-contained
+- Disabled proot Python extension for Android compatibility
+- Suppressed excessive C/C++ warnings during compilation
+
+### Version 0.1.0 (Original)
+- Initial fork from Anbox
+- Basic container functionality with proot isolation
+- Graphics support via forked anbox renderer
 
 ## Preview
 
