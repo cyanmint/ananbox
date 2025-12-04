@@ -27,7 +27,19 @@ StreamingServer::StreamingServer(const std::shared_ptr<Runtime>& runtime,
                                  const std::string& address,
                                  uint16_t port)
     : runtime_(runtime),
+      address_(address),
+      port_(port),
       connections_(std::make_shared<network::Connections<network::SocketConnection>>()) {
+    
+    INFO("Streaming server initializing on %s:%d...", address.c_str(), port);
+}
+
+StreamingServer::~StreamingServer() {
+    stop();
+}
+
+void StreamingServer::start() {
+    INFO("Starting streaming server on %s:%d...", address_.c_str(), port_);
     
     auto delegate_connector = std::make_shared<
         network::DelegateConnectionCreator<boost::asio::ip::tcp>>(
@@ -36,23 +48,17 @@ StreamingServer::StreamingServer(const std::shared_ptr<Runtime>& runtime,
         });
 
     try {
-        boost::asio::ip::address_v4 addr = boost::asio::ip::address_v4::from_string(address);
+        boost::asio::ip::address_v4 addr = boost::asio::ip::address_v4::from_string(address_);
         connector_ = std::make_shared<network::TcpSocketConnector>(
-            addr, port, runtime, delegate_connector);
+            addr, port_, runtime_, delegate_connector);
+        INFO("Streaming server now listening on %s:%d", address_.c_str(), port_);
     } catch (const boost::system::system_error& e) {
-        ERROR("Invalid IPv4 address '%s': %s", address.c_str(), e.what());
+        ERROR("Failed to start streaming server on %s:%d: %s", address_.c_str(), port_, e.what());
+        throw;
+    } catch (const std::exception& e) {
+        ERROR("Failed to start streaming server: %s", e.what());
         throw;
     }
-    
-    INFO("Streaming server initialized on %s:%d", address.c_str(), port);
-}
-
-StreamingServer::~StreamingServer() {
-    stop();
-}
-
-void StreamingServer::start() {
-    INFO("Streaming server started");
 }
 
 void StreamingServer::stop() {

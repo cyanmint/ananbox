@@ -68,6 +68,8 @@ private:
     void broadcast_message(MessageType type, const void* data, uint32_t size);
 
     std::shared_ptr<Runtime> runtime_;
+    std::string address_;
+    uint16_t port_;
     std::shared_ptr<network::TcpSocketConnector> connector_;
     std::shared_ptr<network::Connections<network::SocketConnection>> connections_;
 
