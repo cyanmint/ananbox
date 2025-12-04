@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <limits.h>
 
 #include "anbox/logger.h"
 #include "server/streaming_server.h"
@@ -47,14 +48,20 @@ void print_usage(const char* program) {
               << "  -w, --width <pixels>    Display width (default: 1280)\n"
               << "  -h, --height <pixels>   Display height (default: 720)\n"
               << "  -d, --dpi <dpi>         Display DPI (default: 160)\n"
-              << "  -r, --rootfs <path>     Path to rootfs directory (default: $HOME/rootfs)\n"
-              << "  -P, --proot <path>      Path to proot binary (default: proot in PATH)\n"
-              << "  -s, --script <path>     Path to startup script (default: rootfs/run.sh)\n"
+              << "  -b, --base <path>       Base path (parent of rootfs, default: current directory)\n"
+              << "  -P, --proot <path>      Path to proot/libproot.so (default: ./libproot.so)\n"
+              << "  -s, --script <path>     Path to startup script (default: <base>/rootfs/run.sh)\n"
+              << "  -t, --tmpdir <path>     Temporary directory for proot (default: <base>/tmp)\n"
               << "  -v, --verbose           Enable verbose logging\n"
               << "  --help                  Show this help message\n"
               << "\n"
+              << "The base path should contain:\n"
+              << "  - rootfs/         Android rootfs directory\n"
+              << "  - rootfs/run.sh   Container startup script\n"
+              << "\n"
               << "Example (in Termux):\n"
-              << "  " << program << " -a 0.0.0.0 -p 5558 -w 1920 -h 1080 -r ~/rootfs\n"
+              << "  cd /data/data/com.termux/ananbox\n"
+              << "  ./ananbox-server -b . -P ./libproot.so\n"
               << std::endl;
 }
 
@@ -70,18 +77,41 @@ std::string normalize_path(const std::string& path) {
     return result;
 }
 
+// Get the parent directory of a path
+std::string get_parent_dir(const std::string& path) {
+    size_t pos = path.rfind('/');
+    if (pos == std::string::npos || pos == 0) {
+        return ".";
+    }
+    return path.substr(0, pos);
+}
+
+// Create directory if it doesn't exist
+bool ensure_directory(const std::string& path) {
+    struct stat st;
+    if (stat(path.c_str(), &st) == 0) {
+        return S_ISDIR(st.st_mode);
+    }
+    return mkdir(path.c_str(), 0755) == 0;
+}
+
 int main(int argc, char* argv[]) {
-    // Default paths suitable for Termux
-    const char* home_env = getenv("HOME");
-    std::string home = home_env ? home_env : "/data/data/com.termux/files/home";
+    // Get current working directory as default base
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) == nullptr) {
+        ERROR("Failed to get current directory");
+        return 1;
+    }
+    
     std::string listen_address = "0.0.0.0";
     uint16_t listen_port = anbox::server::DEFAULT_PORT;
     int display_width = 1280;
     int display_height = 720;
     int display_dpi = 160;
-    std::string rootfs_path = home + "/rootfs";
-    std::string proot_path = "proot";  // Assume proot is in PATH
-    std::string startup_script;  // Will default to rootfs/run.sh if not specified
+    std::string base_path = cwd;  // Default to current directory
+    std::string proot_path = "./libproot.so";  // Default to local libproot.so
+    std::string startup_script;  // Will default to <base>/rootfs/run.sh if not specified
+    std::string tmp_dir;  // Will default to <base>/tmp if not specified
     bool verbose = false;
 
     static struct option long_options[] = {
@@ -90,9 +120,10 @@ int main(int argc, char* argv[]) {
         {"width",   required_argument, 0, 'w'},
         {"height",  required_argument, 0, 'h'},
         {"dpi",     required_argument, 0, 'd'},
-        {"rootfs",  required_argument, 0, 'r'},
+        {"base",    required_argument, 0, 'b'},
         {"proot",   required_argument, 0, 'P'},
         {"script",  required_argument, 0, 's'},
+        {"tmpdir",  required_argument, 0, 't'},
         {"verbose", no_argument,       0, 'v'},
         {"help",    no_argument,       0, 0},
         {0, 0, 0, 0}
@@ -100,7 +131,7 @@ int main(int argc, char* argv[]) {
 
     int opt;
     int option_index = 0;
-    while ((opt = getopt_long(argc, argv, "a:p:w:h:d:r:P:s:v", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "a:p:w:h:d:b:P:s:t:v", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'a':
                 listen_address = optarg;
@@ -117,14 +148,17 @@ int main(int argc, char* argv[]) {
             case 'd':
                 display_dpi = std::stoi(optarg);
                 break;
-            case 'r':
-                rootfs_path = normalize_path(optarg);
+            case 'b':
+                base_path = normalize_path(optarg);
                 break;
             case 'P':
                 proot_path = optarg;
                 break;
             case 's':
                 startup_script = optarg;
+                break;
+            case 't':
+                tmp_dir = optarg;
                 break;
             case 'v':
                 verbose = true;
@@ -153,11 +187,6 @@ int main(int argc, char* argv[]) {
             ERROR("Invalid %s path: contains null byte", name.c_str());
             return false;
         }
-        // Check for path traversal attempts
-        if (path.find("..") != std::string::npos) {
-            ERROR("Invalid %s path: contains '..'", name.c_str());
-            return false;
-        }
         // Path should not be empty
         if (path.empty()) {
             ERROR("Invalid %s path: empty", name.c_str());
@@ -166,17 +195,27 @@ int main(int argc, char* argv[]) {
         return true;
     };
     
-    if (!validate_path(rootfs_path, "rootfs") || !validate_path(proot_path, "proot")) {
+    if (!validate_path(base_path, "base") || !validate_path(proot_path, "proot")) {
         return 1;
     }
 
-    // Normalize rootfs path to remove any trailing slashes
-    rootfs_path = normalize_path(rootfs_path);
+    // Normalize base path
+    base_path = normalize_path(base_path);
 
-    // Check if rootfs directory exists
+    // Check if base directory exists
     struct stat st;
+    if (stat(base_path.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
+        ERROR("Base directory does not exist: %s", base_path.c_str());
+        return 1;
+    }
+
+    // Construct rootfs path from base
+    std::string rootfs_path = base_path + "/rootfs";
+    
+    // Check if rootfs directory exists
     if (stat(rootfs_path.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
         ERROR("Rootfs directory does not exist: %s", rootfs_path.c_str());
+        ERROR("Expected rootfs at: %s/rootfs", base_path.c_str());
         return 1;
     }
 
@@ -185,11 +224,28 @@ int main(int argc, char* argv[]) {
         startup_script = rootfs_path + "/run.sh";
     }
 
+    // Set default tmp directory if not specified
+    if (tmp_dir.empty()) {
+        tmp_dir = base_path + "/tmp";
+    }
+    
+    // Create tmp directory if it doesn't exist
+    if (!ensure_directory(tmp_dir)) {
+        ERROR("Failed to create temporary directory: %s", tmp_dir.c_str());
+        return 1;
+    }
+    
+    // Also create tmp inside rootfs for proot
+    std::string rootfs_tmp = rootfs_path + "/tmp";
+    ensure_directory(rootfs_tmp);
+
     INFO("Ananbox Server starting...");
     INFO("  Listen: %s:%d", listen_address.c_str(), listen_port);
     INFO("  Display: %dx%d @ %d DPI", display_width, display_height, display_dpi);
+    INFO("  Base path: %s", base_path.c_str());
     INFO("  Rootfs: %s", rootfs_path.c_str());
     INFO("  Proot: %s", proot_path.c_str());
+    INFO("  Temp dir: %s", tmp_dir.c_str());
     INFO("  Startup script: %s", startup_script.c_str());
 
     // Note: In Termux standalone mode, we skip EGL/renderer initialization
@@ -209,37 +265,27 @@ int main(int argc, char* argv[]) {
             sigfillset(&signals_to_unblock);
             sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
             
-            // Change to rootfs directory
-            if (chdir(rootfs_path.c_str()) != 0) {
-                fprintf(stderr, "Failed to change to rootfs directory: %s\n", strerror(errno));
+            // Change to base directory (same as app behavior)
+            if (chdir(base_path.c_str()) != 0) {
+                fprintf(stderr, "Failed to change to base directory: %s\n", strerror(errno));
                 exit(1);
             }
             
-            // Use execv with proper argument separation to avoid shell injection
-            // The script receives: $0=script, $1=rootfs_path, $2=proot_path
+            // Set PROOT_TMP_DIR environment variable
+            setenv("PROOT_TMP_DIR", tmp_dir.c_str(), 1);
+            
+            // Execute the script the same way as the app does:
+            // sh $base_path/rootfs/run.sh $base_path $proot_path
+            // The script expects: $1 = base_path (parent of rootfs), $2 = proot_path
             const char* args[] = {
+                "sh",
                 startup_script.c_str(),
-                rootfs_path.c_str(),
+                base_path.c_str(),
                 proot_path.c_str(),
                 nullptr
             };
             
-            // Try to execute the script directly first
-            execv(startup_script.c_str(), const_cast<char* const*>(args));
-            
-            // If that fails, try with bash
-            const char* bash_args[] = {
-                "bash",
-                startup_script.c_str(),
-                rootfs_path.c_str(),
-                proot_path.c_str(),
-                nullptr
-            };
-            execvp("bash", const_cast<char* const*>(bash_args));
-            
-            // If that fails, try with sh
-            bash_args[0] = "sh";
-            execvp("sh", const_cast<char* const*>(bash_args));
+            execvp("sh", const_cast<char* const*>(args));
             
             fprintf(stderr, "Failed to start container: %s\n", strerror(errno));
             exit(1);
