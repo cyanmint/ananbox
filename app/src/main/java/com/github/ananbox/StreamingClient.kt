@@ -13,6 +13,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.LinkedBlockingQueue
 import kotlin.concurrent.thread
 
 /**
@@ -66,13 +67,20 @@ class StreamingClient {
         fun onError(error: String)
     }
     
+    // Message to send (type, payload)
+    private data class OutgoingMessage(val type: Byte, val payload: ByteArray)
+    
     private var socket: Socket? = null
     private var inputStream: DataInputStream? = null
     private var outputStream: DataOutputStream? = null
     private var listener: Listener? = null
     private var running = false
     private var receiveThread: Thread? = null
+    private var sendThread: Thread? = null
     private var sequence = 0
+    
+    // Queue for outgoing messages to avoid NetworkOnMainThreadException
+    private val sendQueue = LinkedBlockingQueue<OutgoingMessage>()
     
     // Display configuration received from server
     private var displayWidth = 1280
@@ -104,6 +112,14 @@ class StreamingClient {
             
             running = true
             
+            // Clear any pending messages from previous connection
+            sendQueue.clear()
+            
+            // Start send thread first to handle handshake
+            sendThread = thread(start = true, name = "StreamingClient-Send") {
+                sendLoop()
+            }
+            
             // Send handshake request
             sendHandshake(width, height, dpi)
             
@@ -127,8 +143,8 @@ class StreamingClient {
         running = false
         
         try {
-            // Send disconnect message
-            sendMessage(MSG_DISCONNECT, ByteArray(0))
+            // Send disconnect message - use direct send since we're shutting down
+            sendMessageDirect(MSG_DISCONNECT, ByteArray(0))
         } catch (e: Exception) {
             // Ignore errors during disconnect
         }
@@ -138,6 +154,9 @@ class StreamingClient {
     
     private fun cleanup() {
         running = false
+        
+        // Clear the send queue
+        sendQueue.clear()
         
         try {
             inputStream?.close()
@@ -157,6 +176,9 @@ class StreamingClient {
         
         receiveThread?.interrupt()
         receiveThread = null
+        
+        sendThread?.interrupt()
+        sendThread = null
     }
     
     private fun sendHandshake(width: Int, height: Int, dpi: Int) {
@@ -168,7 +190,7 @@ class StreamingClient {
             .putInt(dpi)
             .array()
         
-        sendMessage(MSG_HANDSHAKE_REQUEST, payload)
+        queueMessage(MSG_HANDSHAKE_REQUEST, payload)
     }
     
     fun sendTouchEvent(x: Int, y: Int, fingerId: Int, action: Int) {
@@ -192,16 +214,44 @@ class StreamingClient {
             .put(0) // reserved
             .array()
         
-        sendMessage(MSG_TOUCH_EVENT, payload)
+        queueMessage(MSG_TOUCH_EVENT, payload)
     }
     
     fun sendPing() {
         if (!running) return
-        sendMessage(MSG_PING, ByteArray(0))
+        queueMessage(MSG_PING, ByteArray(0))
     }
     
+    /**
+     * Queue a message to be sent on the background send thread.
+     * This is safe to call from the main UI thread.
+     */
+    private fun queueMessage(type: Byte, payload: ByteArray) {
+        if (!running) return
+        sendQueue.offer(OutgoingMessage(type, payload))
+    }
+    
+    /**
+     * Background thread that processes the send queue.
+     */
+    private fun sendLoop() {
+        while (running) {
+            try {
+                val message = sendQueue.poll(100, java.util.concurrent.TimeUnit.MILLISECONDS)
+                if (message != null) {
+                    sendMessageDirect(message.type, message.payload)
+                }
+            } catch (e: InterruptedException) {
+                break
+            }
+        }
+    }
+    
+    /**
+     * Actually send a message to the server. Must be called from background thread.
+     */
     @Synchronized
-    private fun sendMessage(type: Byte, payload: ByteArray) {
+    private fun sendMessageDirect(type: Byte, payload: ByteArray) {
         try {
             val output = outputStream ?: return
             
