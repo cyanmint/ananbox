@@ -19,8 +19,10 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <limits.h>
+#include <thread>
 
 #include "anbox/logger.h"
+#include "anbox/runtime.h"
 #include "server/streaming_server.h"
 #include "server/streaming_protocol.h"
 
@@ -298,6 +300,40 @@ int main(int argc, char* argv[]) {
         INFO("Running server only (no container). Use -s to specify a startup script.");
     }
 
+    // Initialize and start the streaming server
+    std::shared_ptr<anbox::Runtime> runtime;
+    std::shared_ptr<anbox::server::StreamingServer> streaming_server;
+    
+    try {
+        // Create runtime for async I/O
+        runtime = anbox::Runtime::create();
+        
+        // Start the runtime (this spawns worker threads for async I/O)
+        runtime->start();
+        
+        // Create streaming server
+        streaming_server = std::make_shared<anbox::server::StreamingServer>(
+            runtime, listen_address, listen_port);
+        
+        // Set display configuration
+        streaming_server->set_display_config(display_width, display_height, display_dpi);
+        
+        // Start the streaming server
+        streaming_server->start();
+        
+        INFO("Streaming server listening on %s:%d", listen_address.c_str(), listen_port);
+    } catch (const std::exception& e) {
+        ERROR("Failed to start streaming server: %s", e.what());
+        // Kill container if running
+        if (container_pid > 0) {
+            kill(container_pid, SIGTERM);
+        }
+        if (runtime) {
+            runtime->stop();
+        }
+        return 1;
+    }
+
     INFO("Server is running. Press Ctrl+C to stop.");
 
     // Main loop - wait for shutdown or child exit
@@ -318,11 +354,23 @@ int main(int argc, char* argv[]) {
                 ERROR("waitpid failed: %s", strerror(errno));
             }
         }
-        sleep(1);
+        
+        // Let the runtime process I/O events
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     // Cleanup
     INFO("Shutting down...");
+    
+    // Stop streaming server
+    if (streaming_server) {
+        streaming_server->stop();
+    }
+    
+    // Stop runtime
+    if (runtime) {
+        runtime->stop();
+    }
     
     // Kill container if still running
     if (container_pid > 0) {
