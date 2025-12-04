@@ -219,7 +219,7 @@ class MainActivity : AppCompatActivity() {
                             // We check if the target would escape the rootfs when resolved
                             val isAbsolute = linkTarget.startsWith("/")
                             val wouldEscape = if (isAbsolute) {
-                                // Absolute symlinks should stay within rootfs 
+                                // Absolute symlinks should stay within rootfs
                                 // (they will be resolved relative to the proot environment anyway)
                                 false  // Allow absolute symlinks as proot handles them
                             } else {
