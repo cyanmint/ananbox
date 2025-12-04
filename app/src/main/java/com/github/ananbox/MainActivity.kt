@@ -1,10 +1,10 @@
+@file:Suppress("DEPRECATION")
 package com.github.ananbox
 
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.ProgressDialog
-import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -217,7 +217,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        scrcpyClient?.onDisconnected = { reason ->
+        scrcpyClient?.onDisconnected = { _ ->
             mainHandler.post {
                 Toast.makeText(this@MainActivity,
                     getString(R.string.scrcpy_disconnected),
@@ -236,7 +236,7 @@ class MainActivity : AppCompatActivity() {
         scrcpyClient?.connect(holder.surface)
     }
     
-    private val scrcpyTouchListener = View.OnTouchListener { v, event ->
+    private val scrcpyTouchListener = View.OnTouchListener { _, event ->
         val client = scrcpyClient ?: return@OnTouchListener true
         
         val maskedAction = event.action and MotionEvent.ACTION_MASK
@@ -268,8 +268,11 @@ class MainActivity : AppCompatActivity() {
     private fun connectToRemoteServer(holder: SurfaceHolder) {
         Log.i(TAG, "Connecting to remote server: $remoteAddress:$remotePort")
         
+        
         val displayMetrics = DisplayMetrics()
+        
         windowManager.defaultDisplay.getRealMetrics(displayMetrics)
+        
         val dpi = displayMetrics.densityDpi
         
         streamingClient = StreamingClient()
@@ -345,7 +348,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private val remoteTouchListener = View.OnTouchListener { v, event ->
+    private val remoteTouchListener = View.OnTouchListener { _, event ->
         val client = streamingClient ?: return@OnTouchListener true
         
         val maskedAction = event.action and MotionEvent.ACTION_MASK
@@ -429,7 +432,8 @@ class MainActivity : AppCompatActivity() {
                 .apply {
                     setTitle(getString(R.string.rom_installer_title))
                     setMessage(getString(R.string.rom_installer_message))
-                    setPositiveButton(R.string.rom_installer_install) { dialogInterface: DialogInterface, i: Int ->
+                    setPositiveButton(R.string.rom_installer_install) { _, _ ->
+                        
                         startActivityForResult(
                             Intent(Intent.ACTION_OPEN_DOCUMENT)
                                 .apply {
@@ -444,7 +448,7 @@ class MainActivity : AppCompatActivity() {
                             READ_REQUEST_CODE
                         )
                     }
-                    setNegativeButton(R.string.cancel) { dialogInterface: DialogInterface, i: Int ->
+                    setNegativeButton(R.string.cancel) { _, _ ->
                         finishAffinity()
                         exitProcess(0)
                     }
@@ -502,9 +506,12 @@ class MainActivity : AppCompatActivity() {
             }
             val uri = data.data
             if (uri != null) {
+                
                 val progressDialog = ProgressDialog(this).apply {
                     setTitle(getString(R.string.rom_installer_extracting_title))
+                    
                     setMessage(getString(R.string.rom_installer_extracting_msg))
+                    
                     setProgressStyle(ProgressDialog.STYLE_SPINNER)
                     setCanceledOnTouchOutside(false)
                     show()

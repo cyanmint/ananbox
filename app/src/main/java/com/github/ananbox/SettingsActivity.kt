@@ -130,6 +130,7 @@ class SettingsActivity : AppCompatActivity() {
             val shutdown = preferenceScreen.findPreference<Preference>(getString(R.string.settings_shutdown_key))
             val viewLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_logs_key))
             val exportLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_export_logs_key))
+            @Suppress("UNUSED_VARIABLE")
             val verboseMode = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_verbose_key))
             
             // Connection mode

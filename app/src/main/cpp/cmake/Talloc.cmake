@@ -19,7 +19,7 @@ ExternalProject_Add(
         talloc
         URL https://download.samba.org/pub/talloc/talloc-2.4.1.tar.gz
         BUILD_IN_SOURCE 1
-        CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CC=${TALLOC_C_COMPILER}" "LD=${TALLOC_C_COMPILER}" "HOSTCC=gcc" ./configure --prefix=${TALLOC_BIN} --disable-rpath --disable-python --without-gettext --cross-compile --cross-answers=${CMAKE_CURRENT_SOURCE_DIR}/talloc/cross-answers.txt
-        BUILD_COMMAND ${CMAKE_COMMAND} -E env "CC=${TALLOC_C_COMPILER}" "LD=${TALLOC_C_COMPILER}" make
+        CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CC=${TALLOC_C_COMPILER}" "LD=${TALLOC_C_COMPILER}" "CFLAGS=-w" "HOSTCC=gcc" ./configure --prefix=${TALLOC_BIN} --disable-rpath --disable-python --without-gettext --cross-compile --cross-answers=${CMAKE_CURRENT_SOURCE_DIR}/talloc/cross-answers.txt
+        BUILD_COMMAND ${CMAKE_COMMAND} -E env "CC=${TALLOC_C_COMPILER}" "LD=${TALLOC_C_COMPILER}" "CFLAGS=-w" make
         INSTALL_COMMAND mkdir -p ${TALLOC_INCLUDE_DIRS} ${TALLOC_BIN}/lib && sh -c "${CMAKE_AR} rcs ${TALLOC_STATIC_LIB} bin/default/talloc.c*.o" && cp -f talloc.h ${TALLOC_INCLUDE_DIRS}
 )
