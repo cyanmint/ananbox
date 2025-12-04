@@ -378,5 +378,4 @@ target_link_libraries(ananbox
 add_backward(ananbox)
 endif()
 
-# Include server subdirectory for standalone server build
-add_subdirectory(server)
+# Server build is handled in the main CMakeLists.txt after Proot is included
