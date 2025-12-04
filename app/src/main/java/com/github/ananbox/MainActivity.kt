@@ -145,8 +145,7 @@ class MainActivity : AppCompatActivity() {
                     "-h", mSurfaceView.height.toString(),
                     "-d", dpi.toString(),
                     "-A", "127.0.0.1",
-                    "-D", localAdbPort.toString(),
-                    "-t", prootTmpDir  // Pass tmp dir as argument too
+                    "-D", localAdbPort.toString()
                 )
                 
                 Log.i(TAG, "Executing: ${command.joinToString(" ")}")
