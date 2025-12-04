@@ -25,15 +25,22 @@
     <string name="rom_installer_extracting_msg">Extracting rom file..</string>
     <string name="cancel">Cancel</string>
     
-    <!-- Local Container Mode Settings -->
-    <string name="settings_local_category">Local Container</string>
-    <string name="settings_container_mode_key">container_mode</string>
-    <string name="settings_container_mode_title">Container Mode</string>
-    <string name="settings_container_mode_summary">Choose how to run the local container</string>
-    <string name="container_mode_jni">Direct (JNI)</string>
-    <string name="container_mode_server">Embedded Server</string>
-    <string name="container_mode_jni_value">jni</string>
-    <string name="container_mode_server_value">server</string>
+    <!-- Connection Mode Settings -->
+    <string name="settings_connection_category">Connection Mode</string>
+    <string name="settings_connection_mode_key">connection_mode</string>
+    <string name="settings_connection_mode_title">Connection Mode</string>
+    <string name="settings_connection_mode_summary">Choose how to run Ananbox</string>
+    <string name="connection_mode_local_jni">Local - Direct (JNI)</string>
+    <string name="connection_mode_local_server">Local - Embedded Server</string>
+    <string name="connection_mode_remote_legacy">Remote - Legacy Streaming</string>
+    <string name="connection_mode_remote_scrcpy">Remote - scrcpy via ADB</string>
+    <string name="connection_mode_local_jni_value">local_jni</string>
+    <string name="connection_mode_local_server_value">local_server</string>
+    <string name="connection_mode_remote_legacy_value">remote_legacy</string>
+    <string name="connection_mode_remote_scrcpy_value">remote_scrcpy</string>
+    
+    <!-- Local Server Settings -->
+    <string name="settings_local_category">Local Server Options</string>
     <string name="settings_local_port_key">local_server_port</string>
     <string name="settings_local_port_title">Local Server Port</string>
     <string name="settings_local_port_summary">Port for embedded server streaming (default: 5558)</string>
@@ -48,10 +55,7 @@
     <string name="embedded_server_failed">Failed to start embedded server: %1$s</string>
     
     <!-- Remote Server Settings -->
-    <string name="settings_remote_category">Remote Server</string>
-    <string name="settings_remote_enabled_key">remote_enabled</string>
-    <string name="settings_remote_enabled_title">Connect to Remote Server</string>
-    <string name="settings_remote_enabled_summary">Stream graphics/audio/input from a remote Ananbox server instead of running locally</string>
+    <string name="settings_remote_category">Remote Server Options</string>
     <string name="settings_remote_address_key">remote_address</string>
     <string name="settings_remote_address_title">Server Address</string>
     <string name="settings_remote_address_summary">IP address of the remote Ananbox server</string>
@@ -63,25 +67,10 @@
     <string name="settings_remote_connect_key">remote_connect</string>
     <string name="settings_remote_connect_title">Connect Now</string>
     <string name="settings_remote_connect_summary">Connect to the configured remote server</string>
-    
-    <!-- ADB Settings for Remote Server -->
-    <string name="settings_adb_enabled_key">adb_enabled</string>
-    <string name="settings_adb_enabled_title">Connect via ADB (scrcpy)</string>
-    <string name="settings_adb_enabled_summary">Use scrcpy protocol for better performance. Requires scrcpy server on remote.</string>
     <string name="settings_adb_port_key">adb_port</string>
     <string name="settings_adb_port_title">ADB Port</string>
-    <string name="settings_adb_port_summary">Port number for ADB connection (default: 5555)</string>
+    <string name="settings_adb_port_summary">Port number for ADB/scrcpy connection (default: 5555)</string>
     <string name="settings_adb_port_default">5555</string>
-    <string name="settings_adb_connect_key">adb_connect</string>
-    <string name="settings_adb_connect_title">Connect via ADB</string>
-    <string name="settings_adb_connect_summary">Connect to the remote server using ADB</string>
-    <string name="settings_scrcpy_enabled_key">scrcpy_enabled</string>
-    <string name="settings_scrcpy_enabled_title">Use scrcpy Renderer</string>
-    <string name="settings_scrcpy_enabled_summary">Use scrcpy H264 video decoding for better performance</string>
-    <string name="settings_scrcpy_port_key">scrcpy_port</string>
-    <string name="settings_scrcpy_port_title">scrcpy Port</string>
-    <string name="settings_scrcpy_port_summary">Port for scrcpy video stream (default: 27183)</string>
-    <string name="settings_scrcpy_port_default">27183</string>
     
     <!-- Connection Status -->
     <string name="remote_connecting">Connecting to %1$s:%2$s…</string>

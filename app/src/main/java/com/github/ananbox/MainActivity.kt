@@ -388,29 +388,39 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
-        // Check if we should connect to remote server
-        isRemoteMode = intent.getBooleanExtra("remote_mode", false) || 
-                       SettingsActivity.isRemoteModeEnabled(this)
+        // Check connection mode from settings
+        val connectionMode = SettingsActivity.getConnectionMode(this)
+        Log.i(TAG, "Connection mode: $connectionMode")
         
-        if (isRemoteMode) {
-            remoteAddress = intent.getStringExtra("remote_address") 
-                ?: SettingsActivity.getRemoteAddress(this)
-            remotePort = intent.getIntExtra("remote_port", 
-                SettingsActivity.getRemotePort(this))
-            
-            // Check if scrcpy mode is enabled
-            isScrcpyMode = SettingsActivity.isScrcpyModeEnabled(this)
-            if (isScrcpyMode) {
-                scrcpyPort = SettingsActivity.getScrcpyPort(this)
-                Log.i(TAG, "Scrcpy mode enabled: $remoteAddress:$scrcpyPort")
-            } else {
-                Log.i(TAG, "Remote mode enabled: $remoteAddress:$remotePort")
+        when (connectionMode) {
+            SettingsActivity.MODE_LOCAL_JNI -> {
+                isRemoteMode = false
+                isEmbeddedServerMode = false
+                isScrcpyMode = false
+                Log.i(TAG, "Local JNI mode")
             }
-        } else {
-            // Check container mode for local operation
-            val containerMode = SettingsActivity.getContainerMode(this)
-            isEmbeddedServerMode = (containerMode == SettingsActivity.CONTAINER_MODE_SERVER)
-            Log.i(TAG, "Local mode - container mode: $containerMode (embedded server: $isEmbeddedServerMode)")
+            SettingsActivity.MODE_LOCAL_SERVER -> {
+                isRemoteMode = false
+                isEmbeddedServerMode = true
+                isScrcpyMode = false
+                Log.i(TAG, "Local embedded server mode")
+            }
+            SettingsActivity.MODE_REMOTE_LEGACY -> {
+                isRemoteMode = true
+                isEmbeddedServerMode = false
+                isScrcpyMode = false
+                remoteAddress = SettingsActivity.getRemoteAddress(this)
+                remotePort = SettingsActivity.getRemotePort(this)
+                Log.i(TAG, "Remote legacy mode: $remoteAddress:$remotePort")
+            }
+            SettingsActivity.MODE_REMOTE_SCRCPY -> {
+                isRemoteMode = true
+                isEmbeddedServerMode = false
+                isScrcpyMode = true
+                remoteAddress = SettingsActivity.getRemoteAddress(this)
+                scrcpyPort = SettingsActivity.getAdbPort(this)
+                Log.i(TAG, "Remote scrcpy mode: $remoteAddress:$scrcpyPort")
+            }
         }
         
         // For local mode, check if rootfs exists

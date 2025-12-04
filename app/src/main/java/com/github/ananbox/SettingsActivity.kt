@@ -30,17 +30,40 @@ class SettingsActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "SettingsActivity"
         
-        const val CONTAINER_MODE_JNI = "jni"
-        const val CONTAINER_MODE_SERVER = "server"
+        // Connection mode constants
+        const val MODE_LOCAL_JNI = "local_jni"
+        const val MODE_LOCAL_SERVER = "local_server"
+        const val MODE_REMOTE_LEGACY = "remote_legacy"
+        const val MODE_REMOTE_SCRCPY = "remote_scrcpy"
         
         fun isVerboseModeEnabled(context: Context): Boolean {
             return PreferenceManager.getDefaultSharedPreferences(context)
                 .getBoolean(context.getString(R.string.settings_verbose_key), false)
         }
         
-        fun isRemoteModeEnabled(context: Context): Boolean {
+        fun getConnectionMode(context: Context): String {
             return PreferenceManager.getDefaultSharedPreferences(context)
-                .getBoolean(context.getString(R.string.settings_remote_enabled_key), false)
+                .getString(context.getString(R.string.settings_connection_mode_key),
+                          MODE_LOCAL_JNI)
+                ?: MODE_LOCAL_JNI
+        }
+        
+        fun isLocalMode(context: Context): Boolean {
+            val mode = getConnectionMode(context)
+            return mode == MODE_LOCAL_JNI || mode == MODE_LOCAL_SERVER
+        }
+        
+        fun isRemoteMode(context: Context): Boolean {
+            val mode = getConnectionMode(context)
+            return mode == MODE_REMOTE_LEGACY || mode == MODE_REMOTE_SCRCPY
+        }
+        
+        fun isScrcpyMode(context: Context): Boolean {
+            return getConnectionMode(context) == MODE_REMOTE_SCRCPY
+        }
+        
+        fun isEmbeddedServerMode(context: Context): Boolean {
+            return getConnectionMode(context) == MODE_LOCAL_SERVER
         }
         
         fun getRemoteAddress(context: Context): String {
@@ -62,11 +85,6 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
         
-        fun isAdbModeEnabled(context: Context): Boolean {
-            return PreferenceManager.getDefaultSharedPreferences(context)
-                .getBoolean(context.getString(R.string.settings_adb_enabled_key), false)
-        }
-        
         fun getAdbPort(context: Context): Int {
             val portStr = PreferenceManager.getDefaultSharedPreferences(context)
                 .getString(context.getString(R.string.settings_adb_port_key),
@@ -77,13 +95,6 @@ class SettingsActivity : AppCompatActivity() {
             } catch (e: NumberFormatException) {
                 5555
             }
-        }
-        
-        fun getContainerMode(context: Context): String {
-            return PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_container_mode_key),
-                          CONTAINER_MODE_JNI)
-                ?: CONTAINER_MODE_JNI
         }
         
         fun getLocalServerPort(context: Context): Int {
@@ -109,23 +120,6 @@ class SettingsActivity : AppCompatActivity() {
                 5555
             }
         }
-        
-        fun isScrcpyModeEnabled(context: Context): Boolean {
-            return PreferenceManager.getDefaultSharedPreferences(context)
-                .getBoolean(context.getString(R.string.settings_scrcpy_enabled_key), false)
-        }
-        
-        fun getScrcpyPort(context: Context): Int {
-            val portStr = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_scrcpy_port_key),
-                          context.getString(R.string.settings_scrcpy_port_default))
-                ?: context.getString(R.string.settings_scrcpy_port_default)
-            return try {
-                portStr.toInt()
-            } catch (e: NumberFormatException) {
-                27183
-            }
-        }
     }
 
     class SettingsFragment: PreferenceFragmentCompat() {
@@ -138,21 +132,18 @@ class SettingsActivity : AppCompatActivity() {
             val exportLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_export_logs_key))
             val verboseMode = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_verbose_key))
             
-            // Local container settings
-            val containerMode = preferenceScreen.findPreference<ListPreference>(getString(R.string.settings_container_mode_key))
+            // Connection mode
+            val connectionMode = preferenceScreen.findPreference<ListPreference>(getString(R.string.settings_connection_mode_key))
+            
+            // Local server settings
             val localPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_port_key))
             val localAdbPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_adb_port_key))
             
             // Remote server settings
-            val remoteEnabled = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_remote_enabled_key))
             val remoteAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_address_key))
             val remotePort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_port_key))
             val remoteConnect = preferenceScreen.findPreference<Preference>(getString(R.string.settings_remote_connect_key))
-            
-            // ADB settings
-            val adbEnabled = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_adb_enabled_key))
             val adbPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_adb_port_key))
-            val adbConnect = preferenceScreen.findPreference<Preference>(getString(R.string.settings_adb_connect_key))
 
             start?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
                 startActivity(Intent(activity, MainActivity::class.java))
@@ -176,9 +167,9 @@ class SettingsActivity : AppCompatActivity() {
                 true
             }
             
-            // Update container mode summary with current value
-            containerMode?.summaryProvider = Preference.SummaryProvider<ListPreference> { pref ->
-                pref.entry ?: getString(R.string.settings_container_mode_summary)
+            // Update connection mode summary with current value
+            connectionMode?.summaryProvider = Preference.SummaryProvider<ListPreference> { pref ->
+                pref.entry ?: getString(R.string.settings_connection_mode_summary)
             }
             
             // Update local server port summary
@@ -237,38 +228,8 @@ class SettingsActivity : AppCompatActivity() {
                     Toast.LENGTH_SHORT).show()
                 
                 // Start MainActivity which will connect to remote server
-                val intent = Intent(activity, MainActivity::class.java).apply {
-                    putExtra("remote_mode", true)
-                    putExtra("remote_address", address)
-                    putExtra("remote_port", port)
-                }
+                val intent = Intent(activity, MainActivity::class.java)
                 startActivity(intent)
-                true
-            }
-            
-            // Handle ADB connect button - shows connection instructions
-            adbConnect?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
-                val context = activity ?: return@OnPreferenceClickListener true
-                val address = getRemoteAddress(context)
-                val adbPortNum = getAdbPort(context)
-                
-                // Show dialog with ADB connection instructions
-                val adbCommand = getString(R.string.adb_connect_command, address, adbPortNum.toString())
-                
-                val message = getString(R.string.adb_connect_hint, address, adbPortNum.toString()) + 
-                              "\n\n" + getString(R.string.scrcpy_hint, address, adbPortNum.toString())
-                
-                android.app.AlertDialog.Builder(context)
-                    .setTitle(getString(R.string.settings_adb_connect_title))
-                    .setMessage(message)
-                    .setPositiveButton("Copy ADB Command") { _, _ ->
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        val clip = android.content.ClipData.newPlainText("ADB Command", adbCommand)
-                        clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, getString(R.string.adb_command_copied), Toast.LENGTH_SHORT).show()
-                    }
-                    .setNegativeButton(getString(R.string.cancel), null)
-                    .show()
                 true
             }
         }
@@ -318,23 +279,17 @@ class SettingsActivity : AppCompatActivity() {
                                 addStringToTar(tarOs, dmesgOutput, "dmesg.txt")
                             }
                             
-                            // Add verbose mode status and container mode
+                            // Add settings info
                             val verboseEnabled = isVerboseModeEnabled(context)
-                            val containerMode = getContainerMode(context)
+                            val connectionMode = getConnectionMode(context)
                             val settingsInfo = StringBuilder()
                             settingsInfo.append("Verbose mode: $verboseEnabled\n")
-                            settingsInfo.append("Container mode: $containerMode\n")
+                            settingsInfo.append("Connection mode: $connectionMode\n")
+                            settingsInfo.append("Remote address: ${getRemoteAddress(context)}\n")
+                            settingsInfo.append("Remote port: ${getRemotePort(context)}\n")
+                            settingsInfo.append("ADB port: ${getAdbPort(context)}\n")
                             settingsInfo.append("Local server port: ${getLocalServerPort(context)}\n")
                             settingsInfo.append("Local ADB port: ${getLocalAdbPort(context)}\n")
-                            settingsInfo.append("Remote mode enabled: ${isRemoteModeEnabled(context)}\n")
-                            if (isRemoteModeEnabled(context)) {
-                                settingsInfo.append("Remote address: ${getRemoteAddress(context)}\n")
-                                settingsInfo.append("Remote port: ${getRemotePort(context)}\n")
-                                settingsInfo.append("ADB mode enabled: ${isAdbModeEnabled(context)}\n")
-                                if (isAdbModeEnabled(context)) {
-                                    settingsInfo.append("ADB port: ${getAdbPort(context)}\n")
-                                }
-                            }
                             addStringToTar(tarOs, settingsInfo.toString(), "settings.txt")
                             
                             tarOs.finish()
