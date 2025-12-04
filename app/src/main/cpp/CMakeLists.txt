@@ -59,82 +59,42 @@ include_directories(
         ${Boost_INCLUDE_DIRS}
 )
 
-# Creates and names a library, sets it as either STATIC
-# or SHARED, and provides the relative paths to its source code.
-# You can define multiple libraries, and CMake builds them for you.
-# Gradle automatically packages shared libraries with your APK.
+# Server sources for streaming functionality
+set(SERVER_SOURCES
+    ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_server.cpp
+    ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_layer_composer.cpp
+    ${CMAKE_SOURCE_DIR}/anbox/src/server/software_color_buffer.cpp
+    ${CMAKE_SOURCE_DIR}/anbox/src/server/adb_forwarder.cpp
+)
 
-add_library( # Sets the name of the library.
-        anbox
-
-        # Sets the library as a shared library.
-        SHARED
-
-        # Provides a relative path to your source file(s).
-        libanbox.cpp)
-
-# Searches for a specified prebuilt library and stores the path as a
-# variable. Because CMake includes system libraries in the search path by
-# default, you only need to specify the name of the public NDK library
-# you want to add. CMake verifies that the library exists before
-# completing its build.
-
-find_library( # Sets the name of the path variable.
-        log-lib
-
-        # Specifies the name of the NDK library that
-        # you want CMake to locate.
-        log)
-
-# Specifies libraries CMake should link to your target library. You
-# can link multiple libraries, such as libraries you define in this
-# build script, prebuilt third-party libraries, or system libraries.
-
-target_link_libraries( # Specifies the target library.
-        anbox
-        anbox-core
-        android
-        # Links the target library to the log library
-        # included in the NDK.
-        ${log-lib})
-
-# Build standalone server as an executable that gets packaged as a "fake library"
-# This allows it to be included in the APK's lib/ directory and executed directly
-# Similar to how proot is built
+# Build libanbox.so as a shared library that can also be executed as a standalone server
+# This is similar to how busybox works - one binary with multiple functions
 if(ANDROID)
-    set(SERVER_SOURCES
-        ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_server.cpp
-        ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_layer_composer.cpp
-        ${CMAKE_SOURCE_DIR}/anbox/src/server/software_color_buffer.cpp
-        ${CMAKE_SOURCE_DIR}/anbox/src/server/adb_forwarder.cpp
-        ${CMAKE_SOURCE_DIR}/anbox/src/server/main.cpp
-    )
-
-    # Build as an executable
-    add_executable(ananbox-server ${SERVER_SOURCES})
-    
-    # Rename output to libananbox-server.so so it gets packaged in APK
-    set_target_properties(ananbox-server PROPERTIES
-        OUTPUT_NAME "ananbox-server"
-        PREFIX "lib"
-        SUFFIX ".so"
+    # Build as shared library with PIE support for execution
+    add_library(anbox SHARED
+        libanbox.cpp
+        ${SERVER_SOURCES}
     )
     
-    target_compile_definitions(ananbox-server PRIVATE ANANBOX_SERVER)
+    # Add execute permission by setting proper flags
+    # The -pie flag allows it to be executed directly
+    set_target_properties(anbox PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+    )
     
-    target_include_directories(ananbox-server PRIVATE
+    target_include_directories(anbox PRIVATE
         ${CMAKE_SOURCE_DIR}/anbox/src/server
         ${CMAKE_SOURCE_DIR}/anbox/src
         ${CMAKE_SOURCE_DIR}/anbox/src/anbox
-        ${CMAKE_SOURCE_DIR}/anbox/external/android-emugl/shared
-        ${Boost_INCLUDE_DIRS}
     )
     
-    target_link_libraries(ananbox-server
+    find_library(log-lib log)
+    
+    target_link_libraries(anbox
         anbox-core
         ${Boost_LIBRARIES}
-        log
         android
+        ${log-lib}
         EGL
         GLESv2
     )

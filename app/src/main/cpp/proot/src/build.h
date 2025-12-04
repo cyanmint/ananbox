@@ -2,7 +2,7 @@
 #ifndef BUILD_H
 #define BUILD_H
 #undef VERSION
-#define VERSION "-1551810a"
+#define VERSION "-a10ba853"
 #define HAVE_PROCESS_VM
 #define HAVE_SECCOMP_FILTER
 #endif /* BUILD_H */

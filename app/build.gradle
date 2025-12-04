@@ -22,7 +22,7 @@ android {
 
         externalNativeBuild {
             cmake {
-                targets "anbox", "proot", "ananbox-server"
+                targets "anbox", "proot"
             }
         }
     }
