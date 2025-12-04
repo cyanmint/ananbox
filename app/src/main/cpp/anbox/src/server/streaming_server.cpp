@@ -69,7 +69,16 @@ void StreamingServer::stop() {
 void StreamingServer::on_new_connection(
     std::shared_ptr<boost::asio::ip::tcp::socket> const& socket) {
     
-    INFO("New client connection");
+    // Get remote address for logging
+    std::string remote_addr = "unknown";
+    try {
+        auto endpoint = socket->remote_endpoint();
+        remote_addr = endpoint.address().to_string() + ":" + std::to_string(endpoint.port());
+    } catch (...) {}
+    
+    INFO("========================================");
+    INFO("New client connection from: %s", remote_addr.c_str());
+    INFO("========================================");
     
     auto messenger = std::make_shared<network::TcpSocketMessenger>(socket);
     
@@ -108,7 +117,9 @@ void StreamingServer::on_new_connection(
     connection->send(msg.data(), msg.size());
     connection->read_next_message();
     
-    INFO("Client %d connected, display: %dx%d@%ddpi", id, display_width_, display_height_, display_dpi_);
+    INFO("Client %d connected successfully", id);
+    INFO("  Display: %dx%d @ %d DPI", display_width_, display_height_, display_dpi_);
+    INFO("  Total clients: %u", connections_->size());
 }
 
 void StreamingServer::handle_client_message(int id, const std::vector<uint8_t>& data) {

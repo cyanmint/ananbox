@@ -287,23 +287,34 @@ int main(int argc, char* argv[]) {
     std::string rootfs_tmp = rootfs_path + "/tmp";
     ensure_directory(rootfs_tmp);
 
+    INFO("========================================");
     INFO("Ananbox Server starting...");
-    INFO("  Listen: %s:%d", listen_address.c_str(), listen_port);
-    INFO("  Display: %dx%d @ %d DPI", display_width, display_height, display_dpi);
-    INFO("  Base path: %s", base_path.c_str());
-    INFO("  Rootfs: %s", rootfs_path.c_str());
-    INFO("  Proot: %s", proot_path.c_str());
-    INFO("  Temp dir: %s", tmp_dir.c_str());
+    INFO("========================================");
+    INFO("Configuration:");
+    INFO("  Listen address: %s", listen_address.c_str());
+    INFO("  Listen port:    %d", listen_port);
+    INFO("  Display width:  %d", display_width);
+    INFO("  Display height: %d", display_height);
+    INFO("  Display DPI:    %d", display_dpi);
+    INFO("  Base path:      %s", base_path.c_str());
+    INFO("  Rootfs:         %s", rootfs_path.c_str());
+    INFO("  Proot:          %s", proot_path.c_str());
+    INFO("  Temp dir:       %s", tmp_dir.c_str());
     INFO("  Startup script: %s", startup_script.c_str());
+    INFO("========================================");
 
     // Initialize emugl logging
+    INFO("Initializing emugl logging...");
     set_emugl_logger(server_emugl_logger);
     set_emugl_cxt_logger(server_emugl_logger);
 
     // Create runtime for async I/O
+    INFO("Creating async I/O runtime...");
     rt = anbox::Runtime::create();
+    INFO("Runtime created successfully");
 
     // Initialize the Renderer (OpenGL ES emulation)
+    INFO("Initializing OpenGL ES renderer...");
     renderer_ = std::make_shared<::Renderer>();
     frame = std::make_shared<anbox::graphics::Rect>();
     frame->resize(display_width, display_height);
@@ -311,18 +322,28 @@ int main(int argc, char* argv[]) {
     auto display_info = anbox::graphics::emugl::DisplayInfo::get();
     display_info->set_resolution(display_width, display_height);
     display_info->set_dpi(display_dpi);
+    INFO("Display info configured: %dx%d @ %d DPI", display_width, display_height, display_dpi);
 
     // Initialize renderer with default display (may fail in headless mode)
+    INFO("Attempting EGL initialization...");
     bool egl_initialized = renderer_->initialize(EGL_DEFAULT_DISPLAY);
     if (!egl_initialized) {
-        WARNING("Failed to initialize EGL renderer - using software color buffer storage");
-        INFO("The server will capture raw pixel data from the container");
-        INFO("The client app will handle actual rendering");
+        WARNING("========================================");
+        WARNING("EGL initialization failed!");
+        WARNING("Running in software-only mode.");
+        WARNING("========================================");
+        INFO("In this mode:");
+        INFO("  - Test pattern frames will be sent to clients");
+        INFO("  - Container graphics require EGL/swiftshader");
+        INFO("  - Install swiftshader in Termux for full graphics support");
         // Enable software renderer mode - stores color buffers in memory
         enableSoftwareRenderer(true);
     } else {
-        INFO("EGL renderer initialized successfully");
-        // Still register renderer for potential use
+        INFO("========================================");
+        INFO("EGL initialized successfully!");
+        INFO("Container graphics will be captured and streamed.");
+        INFO("========================================");
+        // Register renderer for use
         registerRenderer(renderer_);
     }
 
@@ -331,17 +352,22 @@ int main(int argc, char* argv[]) {
     
     try {
         // Start the runtime (this spawns worker threads for async I/O)
+        INFO("Starting async I/O runtime...");
         rt->start();
+        INFO("Runtime started successfully");
         
         // Create streaming server
+        INFO("Creating streaming server...");
         streaming_server = std::make_shared<anbox::server::StreamingServer>(
             rt, listen_address, listen_port);
         
         // Set display configuration
         streaming_server->set_display_config(display_width, display_height, display_dpi);
+        INFO("Streaming server created");
         
         // Create streaming layer composer that will capture frames and send to clients
         // Pass nullptr for renderer when using software mode - it will use SoftwareColorBufferStore
+        INFO("Creating streaming layer composer...");
         streaming_composer_ = std::make_shared<anbox::server::StreamingLayerComposer>(
             egl_initialized ? renderer_ : nullptr, frame);
         streaming_composer_->set_frame_callback(
@@ -349,14 +375,20 @@ int main(int argc, char* argv[]) {
                 streaming_server->send_frame(data, width, height, 
                     anbox::server::PIXEL_FORMAT_RGBA8888, stride);
             });
+        INFO("Layer composer created and frame callback registered");
         
         // Register the streaming layer composer
         registerLayerComposer(streaming_composer_);
+        INFO("Layer composer registered with RenderControl");
         
         // Start the streaming server
         streaming_server->start();
         
-        INFO("Streaming server listening on %s:%d", listen_address.c_str(), listen_port);
+        INFO("========================================");
+        INFO("Streaming server ready!");
+        INFO("Listening on %s:%d", listen_address.c_str(), listen_port);
+        INFO("Waiting for client connections...");
+        INFO("========================================");
     } catch (const std::exception& e) {
         ERROR("Failed to start streaming server: %s", e.what());
         // Kill container if running
@@ -370,6 +402,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Initialize input manager for touch/key events from clients
+    INFO("Setting up input device manager...");
     auto input_manager = std::make_shared<anbox::input::Manager>(
         rt, anbox::utils::string_format("%s/dev/input", rootfs_path.c_str()));
     
@@ -391,6 +424,7 @@ int main(int argc, char* argv[]) {
     touch_->set_abs_bit(ABS_MT_TRACKING_ID);
     touch_->set_abs_max(ABS_MT_TRACKING_ID, 10);
     touch_->set_prop_bit(INPUT_PROP_DIRECT);
+    INFO("Touch input device created: anbox-touch (supports %d fingers)", 10);
 
     // Set up input callback from streaming server
     streaming_server->set_input_callback(
@@ -408,6 +442,7 @@ int main(int argc, char* argv[]) {
             
             switch (event.action) {
                 case anbox::server::TOUCH_ACTION_DOWN:
+                    DEBUG("Touch DOWN: finger=%d pos=(%d,%d)", event.finger_id, event.x, event.y);
                     touch_events.push_back({EV_ABS, ABS_MT_TRACKING_ID, static_cast<int32_t>(event.finger_id % 10 + 1)});
                     touch_events.push_back({EV_ABS, ABS_MT_POSITION_X, static_cast<int32_t>(event.x)});
                     touch_events.push_back({EV_ABS, ABS_MT_POSITION_Y, static_cast<int32_t>(event.y)});
@@ -417,6 +452,7 @@ int main(int argc, char* argv[]) {
                     touch_events.push_back({EV_ABS, ABS_MT_POSITION_Y, static_cast<int32_t>(event.y)});
                     break;
                 case anbox::server::TOUCH_ACTION_UP:
+                    DEBUG("Touch UP: finger=%d", event.finger_id);
                     touch_events.push_back({EV_ABS, ABS_MT_TRACKING_ID, -1});
                     break;
             }
@@ -424,8 +460,10 @@ int main(int argc, char* argv[]) {
             touch_events.push_back({EV_SYN, SYN_REPORT, 0});
             touch_->send_events(touch_events);
         });
+    INFO("Touch input callback registered");
 
     // Initialize qemu_pipe for Android container communication
+    INFO("Setting up qemu_pipe for container communication...");
     auto sensors_state = std::make_shared<anbox::application::SensorsState>();
     auto gps_info_broker = std::make_shared<anbox::application::GpsInfoBroker>();
     
@@ -436,12 +474,14 @@ int main(int argc, char* argv[]) {
         socket_file, rt,
         std::make_shared<anbox::qemu::PipeConnectionCreator>(
             renderer_, rt, sensors_state, gps_info_broker));
-    
-    INFO("qemu_pipe socket created at %s", socket_file.c_str());
+    INFO("qemu_pipe socket created at: %s", socket_file.c_str());
 
     // Start the container if startup script is available
     if (access(startup_script.c_str(), F_OK) == 0) {
-        INFO("Starting container using script: %s", startup_script.c_str());
+        INFO("========================================");
+        INFO("Starting Android container...");
+        INFO("Script: %s", startup_script.c_str());
+        INFO("========================================");
         container_pid = fork();
         if (container_pid < 0) {
             ERROR("fork() failed: %s", strerror(errno));
@@ -480,13 +520,20 @@ int main(int argc, char* argv[]) {
         } else {
             // Parent process
             INFO("Container process started with PID %d", container_pid);
+            INFO("Container is initializing... This may take a few seconds.");
         }
     } else {
-        INFO("Startup script not found at %s", startup_script.c_str());
-        INFO("Running server only (no container). Use -s to specify a startup script.");
+        WARNING("========================================");
+        WARNING("Startup script not found: %s", startup_script.c_str());
+        WARNING("Running in server-only mode (no container).");
+        WARNING("Use -s to specify a startup script.");
+        WARNING("========================================");
     }
 
-    INFO("Server is running. Press Ctrl+C to stop.");
+    INFO("========================================");
+    INFO("Server is running!");
+    INFO("Press Ctrl+C to stop.");
+    INFO("========================================");
     
     // If EGL failed, we need to send test frames to show the streaming works
     // The container's OpenGL commands won't work without EGL
