@@ -95,7 +95,7 @@ chmod +x $PREFIX/bin/ananbox-server $PREFIX/bin/proot
 ananbox-server --help
 
 # Example: Start server on all interfaces, port 5558
-ananbox-server -a 0.0.0.0 -p 5558 -w 1920 -h 1080 -r ~/rootfs -P proot
+ananbox-server -a 0.0.0.0 -p 5558 -w 1920 -h 1080 -b ~/ananbox -P proot
 ```
 
 #### Server Options:
@@ -104,9 +104,25 @@ ananbox-server -a 0.0.0.0 -p 5558 -w 1920 -h 1080 -r ~/rootfs -P proot
 - `-w, --width <pixels>`: Display width (default: 1280)
 - `-h, --height <pixels>`: Display height (default: 720)
 - `-d, --dpi <dpi>`: Display DPI (default: 160)
-- `-r, --rootfs <path>`: Path to rootfs directory
+- `-b, --base <path>`: Base path (parent of rootfs)
 - `-P, --proot <path>`: Path to proot binary
+- `-A, --adb-address <ip>`: ADB listen address (default: same as --address)
+- `-D, --adb-port <port>`: ADB listen port (default: 5555, 0 to disable)
+- `-S, --adb-socket <path>`: ADB socket path in rootfs (default: /dev/socket/adbd)
 - `-v, --verbose`: Enable verbose logging
+
+### ADB Forwarding
+
+The server can forward ADB connections from a TCP port to the container's ADB socket (`/dev/socket/adbd`). This allows using `adb connect` to access the container, enabling tools like scrcpy to work with remote containers.
+
+```bash
+# On the server (Termux):
+ananbox-server -b ~/ananbox -P proot -D 5555
+
+# From another device:
+adb connect <server-ip>:5555
+scrcpy -s <server-ip>:5555
+```
 
 ### Connecting from the App
 
@@ -116,6 +132,17 @@ ananbox-server -a 0.0.0.0 -p 5558 -w 1920 -h 1080 -r ~/rootfs -P proot
 4. Click "Connect Now" or start the app
 
 The app will connect to the remote server and display the streamed content. Touch events are sent back to the server.
+
+#### Connect via ADB (scrcpy)
+
+For better performance with tools like scrcpy:
+
+1. Enable "Connect to Remote Server"
+2. Enable "Connect via ADB (scrcpy)"
+3. Configure the ADB port (default: 5555)
+4. Click "Connect via ADB" to see connection instructions
+
+This mode is ideal for using scrcpy or other ADB tools to interact with the remote container.
 
 ### Streaming Protocol
 

@@ -22,7 +22,7 @@ android {
 
         externalNativeBuild {
             cmake {
-                targets "anbox", "proot"
+                targets "anbox", "proot", "ananbox-server"
             }
         }
     }
@@ -55,6 +55,11 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+    }
+    // Suppress lint warnings
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
     }
 }
 

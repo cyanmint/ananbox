@@ -28,33 +28,60 @@
         app:summary="@string/settings_shutdown_summary"/>
 
     <PreferenceCategory
-        app:title="@string/settings_remote_category">
+        app:title="@string/settings_connection_category">
 
-        <SwitchPreferenceCompat
-            app:key="@string/settings_remote_enabled_key"
-            app:title="@string/settings_remote_enabled_title"
-            app:summary="@string/settings_remote_enabled_summary"
-            app:defaultValue="false"/>
+        <ListPreference
+            app:key="@string/settings_connection_mode_key"
+            app:title="@string/settings_connection_mode_title"
+            app:summary="@string/settings_connection_mode_summary"
+            app:entries="@array/connection_mode_entries"
+            app:entryValues="@array/connection_mode_values"
+            app:defaultValue="@string/connection_mode_local_jni_value"/>
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        app:title="@string/settings_local_category">
+
+        <EditTextPreference
+            app:key="@string/settings_local_port_key"
+            app:title="@string/settings_local_port_title"
+            app:summary="@string/settings_local_port_summary"
+            app:defaultValue="@string/settings_local_port_default"/>
+
+        <EditTextPreference
+            app:key="@string/settings_local_adb_port_key"
+            app:title="@string/settings_local_adb_port_title"
+            app:summary="@string/settings_local_adb_port_summary"
+            app:defaultValue="@string/settings_local_adb_port_default"/>
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        app:title="@string/settings_remote_category">
 
         <EditTextPreference
             app:key="@string/settings_remote_address_key"
             app:title="@string/settings_remote_address_title"
             app:summary="@string/settings_remote_address_summary"
-            app:defaultValue="@string/settings_remote_address_default"
-            app:dependency="@string/settings_remote_enabled_key"/>
+            app:defaultValue="@string/settings_remote_address_default"/>
 
         <EditTextPreference
             app:key="@string/settings_remote_port_key"
             app:title="@string/settings_remote_port_title"
             app:summary="@string/settings_remote_port_summary"
-            app:defaultValue="@string/settings_remote_port_default"
-            app:dependency="@string/settings_remote_enabled_key"/>
+            app:defaultValue="@string/settings_remote_port_default"/>
+
+        <EditTextPreference
+            app:key="@string/settings_adb_port_key"
+            app:title="@string/settings_adb_port_title"
+            app:summary="@string/settings_adb_port_summary"
+            app:defaultValue="@string/settings_adb_port_default"/>
 
         <Preference
             app:key="@string/settings_remote_connect_key"
             app:title="@string/settings_remote_connect_title"
-            app:summary="@string/settings_remote_connect_summary"
-            app:dependency="@string/settings_remote_enabled_key"/>
+            app:summary="@string/settings_remote_connect_summary"/>
 
     </PreferenceCategory>
 

@@ -25,11 +25,37 @@
     <string name="rom_installer_extracting_msg">Extracting rom file..</string>
     <string name="cancel">Cancel</string>
     
+    <!-- Connection Mode Settings -->
+    <string name="settings_connection_category">Connection Mode</string>
+    <string name="settings_connection_mode_key">connection_mode</string>
+    <string name="settings_connection_mode_title">Connection Mode</string>
+    <string name="settings_connection_mode_summary">Choose how to run Ananbox</string>
+    <string name="connection_mode_local_jni">Local - Direct (JNI)</string>
+    <string name="connection_mode_local_server">Local - Embedded Server</string>
+    <string name="connection_mode_remote_legacy">Remote - Legacy Streaming</string>
+    <string name="connection_mode_remote_scrcpy">Remote - scrcpy via ADB</string>
+    <string name="connection_mode_local_jni_value">local_jni</string>
+    <string name="connection_mode_local_server_value">local_server</string>
+    <string name="connection_mode_remote_legacy_value">remote_legacy</string>
+    <string name="connection_mode_remote_scrcpy_value">remote_scrcpy</string>
+    
+    <!-- Local Server Settings -->
+    <string name="settings_local_category">Local Server Options</string>
+    <string name="settings_local_port_key">local_server_port</string>
+    <string name="settings_local_port_title">Local Server Port</string>
+    <string name="settings_local_port_summary">Port for embedded server streaming (default: 5558)</string>
+    <string name="settings_local_port_default">5558</string>
+    <string name="settings_local_adb_port_key">local_adb_port</string>
+    <string name="settings_local_adb_port_title">Local ADB Port</string>
+    <string name="settings_local_adb_port_summary">Port for ADB forwarding (default: 5555, 0 to disable)</string>
+    <string name="settings_local_adb_port_default">5555</string>
+    <string name="embedded_server_starting">Starting embedded server…</string>
+    <string name="embedded_server_started">Embedded server started on port %1$d</string>
+    <string name="embedded_server_stopped">Embedded server stopped</string>
+    <string name="embedded_server_failed">Failed to start embedded server: %1$s</string>
+    
     <!-- Remote Server Settings -->
-    <string name="settings_remote_category">Remote Server</string>
-    <string name="settings_remote_enabled_key">remote_enabled</string>
-    <string name="settings_remote_enabled_title">Connect to Remote Server</string>
-    <string name="settings_remote_enabled_summary">Stream graphics/audio/input from a remote Ananbox server instead of running locally</string>
+    <string name="settings_remote_category">Remote Server Options</string>
     <string name="settings_remote_address_key">remote_address</string>
     <string name="settings_remote_address_title">Server Address</string>
     <string name="settings_remote_address_summary">IP address of the remote Ananbox server</string>
@@ -41,10 +67,23 @@
     <string name="settings_remote_connect_key">remote_connect</string>
     <string name="settings_remote_connect_title">Connect Now</string>
     <string name="settings_remote_connect_summary">Connect to the configured remote server</string>
+    <string name="settings_adb_port_key">adb_port</string>
+    <string name="settings_adb_port_title">ADB Port</string>
+    <string name="settings_adb_port_summary">Port number for ADB/scrcpy connection (default: 5555)</string>
+    <string name="settings_adb_port_default">5555</string>
     
     <!-- Connection Status -->
     <string name="remote_connecting">Connecting to %1$s:%2$s…</string>
     <string name="remote_connected">Connected to remote server</string>
     <string name="remote_disconnected">Disconnected from server</string>
     <string name="remote_connection_failed">Failed to connect: %1$s</string>
+    <string name="adb_connecting">Connecting via ADB to %1$s:%2$s…</string>
+    <string name="adb_connect_command">adb connect %1$s:%2$s</string>
+    <string name="adb_connect_hint">Run this command to connect:\nadb connect %1$s:%2$s</string>
+    <string name="scrcpy_hint">Then run scrcpy:\nscrcpy -s %1$s:%2$s</string>
+    <string name="adb_command_copied">ADB command copied to clipboard</string>
+    <string name="scrcpy_connecting">Connecting via scrcpy to %1$s:%2$s…</string>
+    <string name="scrcpy_connected">Connected via scrcpy: %1$s (%2$dx%3$d)</string>
+    <string name="scrcpy_disconnected">scrcpy disconnected</string>
+    <string name="scrcpy_error">scrcpy error: %1$s</string>
 </resources>
