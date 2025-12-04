@@ -39,6 +39,7 @@
 #include "server/streaming_server.h"
 #include "server/streaming_protocol.h"
 #include "server/streaming_layer_composer.h"
+#include "server/adb_forwarder.h"
 
 static volatile bool running = true;
 static pid_t container_pid = -1;
@@ -100,6 +101,9 @@ void print_usage(const char* program) {
               << "  -P, --proot <path>      Path to proot/libproot.so (default: ./libproot.so)\n"
               << "  -s, --script <path>     Path to startup script (default: <base>/rootfs/run.sh)\n"
               << "  -t, --tmpdir <path>     Temporary directory for proot (default: <base>/tmp)\n"
+              << "  -A, --adb-address <ip>  ADB listen address (default: same as --address)\n"
+              << "  -D, --adb-port <port>   ADB listen port (default: 5555, 0 to disable)\n"
+              << "  -S, --adb-socket <path> ADB socket path in rootfs (default: /dev/socket/adbd)\n"
               << "  -v, --verbose           Enable verbose logging\n"
               << "  --help                  Show this help message\n"
               << "\n"
@@ -107,9 +111,18 @@ void print_usage(const char* program) {
               << "  - rootfs/         Android rootfs directory\n"
               << "  - rootfs/run.sh   Container startup script\n"
               << "\n"
+              << "ADB Forwarding:\n"
+              << "  The server can forward ADB connections from a TCP port to the container's\n"
+              << "  ADB socket. This allows using 'adb connect <address>:<adb-port>' to access\n"
+              << "  the container, enabling tools like scrcpy to work with remote containers.\n"
+              << "\n"
               << "Example (in Termux):\n"
               << "  cd /data/data/com.termux/ananbox\n"
               << "  ./ananbox-server -b . -P ./libproot.so\n"
+              << "\n"
+              << "  # Then from another device:\n"
+              << "  adb connect <server-ip>:5555\n"
+              << "  scrcpy -s <server-ip>:5555\n"
               << std::endl;
 }
 
@@ -160,6 +173,9 @@ int main(int argc, char* argv[]) {
     std::string proot_path = "./libproot.so";  // Default to local libproot.so
     std::string startup_script;  // Will default to <base>/rootfs/run.sh if not specified
     std::string tmp_dir;  // Will default to <base>/tmp if not specified
+    std::string adb_address;  // Will default to listen_address if not specified
+    uint16_t adb_port = 5555;  // Default ADB port (0 to disable)
+    std::string adb_socket_path = "/dev/socket/adbd";  // Default ADB socket path
     bool verbose = false;
 
     static struct option long_options[] = {
@@ -172,6 +188,9 @@ int main(int argc, char* argv[]) {
         {"proot",   required_argument, 0, 'P'},
         {"script",  required_argument, 0, 's'},
         {"tmpdir",  required_argument, 0, 't'},
+        {"adb-address", required_argument, 0, 'A'},
+        {"adb-port",    required_argument, 0, 'D'},
+        {"adb-socket",  required_argument, 0, 'S'},
         {"verbose", no_argument,       0, 'v'},
         {"help",    no_argument,       0, 0},
         {0, 0, 0, 0}
@@ -179,7 +198,7 @@ int main(int argc, char* argv[]) {
 
     int opt;
     int option_index = 0;
-    while ((opt = getopt_long(argc, argv, "a:p:w:h:d:b:P:s:t:v", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "a:p:w:h:d:b:P:s:t:A:D:S:v", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'a':
                 listen_address = optarg;
@@ -207,6 +226,15 @@ int main(int argc, char* argv[]) {
                 break;
             case 't':
                 tmp_dir = optarg;
+                break;
+            case 'A':  // -A, --adb-address
+                adb_address = optarg;
+                break;
+            case 'D':  // -D, --adb-port
+                adb_port = static_cast<uint16_t>(std::stoi(optarg));
+                break;
+            case 'S':  // -S, --adb-socket
+                adb_socket_path = optarg;
                 break;
             case 'v':
                 verbose = true;
@@ -277,6 +305,11 @@ int main(int argc, char* argv[]) {
         tmp_dir = base_path + "/tmp";
     }
     
+    // Set default ADB address if not specified (use same as listen address)
+    if (adb_address.empty()) {
+        adb_address = listen_address;
+    }
+    
     // Create tmp directory if it doesn't exist
     if (!ensure_directory(tmp_dir)) {
         ERROR("Failed to create temporary directory: %s", tmp_dir.c_str());
@@ -301,6 +334,13 @@ int main(int argc, char* argv[]) {
     INFO("  Proot:          %s", proot_path.c_str());
     INFO("  Temp dir:       %s", tmp_dir.c_str());
     INFO("  Startup script: %s", startup_script.c_str());
+    if (adb_port > 0) {
+        INFO("  ADB address:    %s", adb_address.c_str());
+        INFO("  ADB port:       %d", adb_port);
+        INFO("  ADB socket:     %s", adb_socket_path.c_str());
+    } else {
+        INFO("  ADB forwarding: disabled");
+    }
     INFO("========================================");
 
     // Initialize emugl logging
@@ -349,6 +389,7 @@ int main(int argc, char* argv[]) {
 
     // Create streaming server
     std::shared_ptr<anbox::server::StreamingServer> streaming_server;
+    std::shared_ptr<anbox::server::AdbForwarder> adb_forwarder;
     
     try {
         // Start the runtime (this spawns worker threads for async I/O)
@@ -389,6 +430,21 @@ int main(int argc, char* argv[]) {
         INFO("Listening on %s:%d", listen_address.c_str(), listen_port);
         INFO("Waiting for client connections...");
         INFO("========================================");
+        
+        // Create and start ADB forwarder if enabled
+        if (adb_port > 0) {
+            INFO("Creating ADB forwarder...");
+            adb_forwarder = std::make_shared<anbox::server::AdbForwarder>(
+                rt, adb_address, adb_port, adb_socket_path, rootfs_path);
+            adb_forwarder->start();
+            
+            INFO("========================================");
+            INFO("ADB forwarding ready!");
+            INFO("  ADB address: %s:%d", adb_address.c_str(), adb_port);
+            INFO("  To connect: adb connect %s:%d", adb_address.c_str(), adb_port);
+            INFO("  For scrcpy: scrcpy -s %s:%d", adb_address.c_str(), adb_port);
+            INFO("========================================");
+        }
     } catch (const std::exception& e) {
         ERROR("Failed to start streaming server: %s", e.what());
         // Kill container if running
@@ -609,6 +665,11 @@ int main(int argc, char* argv[]) {
     // Unregister layer composer
     unRegisterLayerComposer();
     streaming_composer_.reset();
+    
+    // Stop ADB forwarder
+    if (adb_forwarder) {
+        adb_forwarder->stop();
+    }
     
     // Stop streaming server
     if (streaming_server) {

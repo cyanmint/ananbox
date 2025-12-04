@@ -28,6 +28,31 @@
         app:summary="@string/settings_shutdown_summary"/>
 
     <PreferenceCategory
+        app:title="@string/settings_local_category">
+
+        <ListPreference
+            app:key="@string/settings_container_mode_key"
+            app:title="@string/settings_container_mode_title"
+            app:summary="@string/settings_container_mode_summary"
+            app:entries="@array/container_mode_entries"
+            app:entryValues="@array/container_mode_values"
+            app:defaultValue="@string/container_mode_jni_value"/>
+
+        <EditTextPreference
+            app:key="@string/settings_local_port_key"
+            app:title="@string/settings_local_port_title"
+            app:summary="@string/settings_local_port_summary"
+            app:defaultValue="@string/settings_local_port_default"/>
+
+        <EditTextPreference
+            app:key="@string/settings_local_adb_port_key"
+            app:title="@string/settings_local_adb_port_title"
+            app:summary="@string/settings_local_adb_port_summary"
+            app:defaultValue="@string/settings_local_adb_port_default"/>
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
         app:title="@string/settings_remote_category">
 
         <SwitchPreferenceCompat
@@ -55,6 +80,26 @@
             app:title="@string/settings_remote_connect_title"
             app:summary="@string/settings_remote_connect_summary"
             app:dependency="@string/settings_remote_enabled_key"/>
+
+        <SwitchPreferenceCompat
+            app:key="@string/settings_adb_enabled_key"
+            app:title="@string/settings_adb_enabled_title"
+            app:summary="@string/settings_adb_enabled_summary"
+            app:defaultValue="false"
+            app:dependency="@string/settings_remote_enabled_key"/>
+
+        <EditTextPreference
+            app:key="@string/settings_adb_port_key"
+            app:title="@string/settings_adb_port_title"
+            app:summary="@string/settings_adb_port_summary"
+            app:defaultValue="@string/settings_adb_port_default"
+            app:dependency="@string/settings_adb_enabled_key"/>
+
+        <Preference
+            app:key="@string/settings_adb_connect_key"
+            app:title="@string/settings_adb_connect_title"
+            app:summary="@string/settings_adb_connect_summary"
+            app:dependency="@string/settings_adb_enabled_key"/>
 
     </PreferenceCategory>
 

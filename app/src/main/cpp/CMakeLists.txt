@@ -91,16 +91,27 @@ target_link_libraries( # Specifies the target library.
         # included in the NDK.
         ${log-lib})
 
-# Build standalone server for Termux (must be after Proot is included)
-if(BUILD_ANANBOX_SERVER AND ANDROID)
+# Build standalone server as an executable that gets packaged as a "fake library"
+# This allows it to be included in the APK's lib/ directory and executed directly
+# Similar to how proot is built
+if(ANDROID)
     set(SERVER_SOURCES
         ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_server.cpp
         ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_layer_composer.cpp
         ${CMAKE_SOURCE_DIR}/anbox/src/server/software_color_buffer.cpp
+        ${CMAKE_SOURCE_DIR}/anbox/src/server/adb_forwarder.cpp
         ${CMAKE_SOURCE_DIR}/anbox/src/server/main.cpp
     )
 
+    # Build as an executable
     add_executable(ananbox-server ${SERVER_SOURCES})
+    
+    # Rename output to libananbox-server.so so it gets packaged in APK
+    set_target_properties(ananbox-server PROPERTIES
+        OUTPUT_NAME "ananbox-server"
+        PREFIX "lib"
+        SUFFIX ".so"
+    )
     
     target_compile_definitions(ananbox-server PRIVATE ANANBOX_SERVER)
     
@@ -120,10 +131,4 @@ if(BUILD_ANANBOX_SERVER AND ANDROID)
         EGL
         GLESv2
     )
-    
-    # Note: proot is built separately by the main Android app build via Gradle
-    # The server binary can be used with the libproot.so from the APK
-
-    # Install the server binary
-    install(TARGETS ananbox-server DESTINATION bin)
 endif()

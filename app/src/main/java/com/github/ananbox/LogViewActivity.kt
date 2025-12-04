@@ -84,6 +84,19 @@ class LogViewActivity : AppCompatActivity() {
             logContent.append("Error reading container.log: ${e.message}\n\n")
         }
 
+        // Read server.log if available (embedded server output)
+        val serverLogFile = File(filesDir, "server.log")
+        try {
+            if (serverLogFile.exists()) {
+                logContent.append("=== server.log ===\n")
+                logContent.append(readLogFile(serverLogFile))
+                logContent.append("\n\n")
+            }
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to read server.log", e)
+            logContent.append("Error reading server.log: ${e.message}\n\n")
+        }
+
         // In verbose mode, show additional diagnostic information
         if (verboseMode) {
             // Add process list

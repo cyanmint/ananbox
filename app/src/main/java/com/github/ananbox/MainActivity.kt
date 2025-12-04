@@ -39,21 +39,26 @@ class MainActivity : AppCompatActivity() {
     private val READ_REQUEST_CODE = 2
     private lateinit var mSurfaceView: SurfaceView
     private var isRemoteMode = false
+    private var isEmbeddedServerMode = false
     private var remoteAddress = ""
     private var remotePort = 5558
     private var streamingClient: StreamingClient? = null
     @Volatile
     private var currentBitmap: Bitmap? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var embeddedServerProcess: Process? = null
     
     private val mSurfaceCallback: SurfaceHolder.Callback = object : SurfaceHolder.Callback {
         override fun surfaceCreated(holder: SurfaceHolder) {
             if (isRemoteMode) {
                 // Remote mode: connect to streaming server
                 connectToRemoteServer(holder)
+            } else if (isEmbeddedServerMode) {
+                // Embedded server mode: start local server then connect
+                startEmbeddedServerAndConnect(holder)
             } else {
-                // Local mode: start local container
-                startLocalContainer(holder)
+                // JNI mode: start local container directly
+                startLocalContainerJni(holder)
             }
         }
 
@@ -65,7 +70,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun surfaceDestroyed(holder: SurfaceHolder) {
-            if (isRemoteMode) {
+            if (isRemoteMode || isEmbeddedServerMode) {
                 streamingClient?.disconnect()
             } else {
                 Anbox.destroySurface()
@@ -74,14 +79,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun startLocalContainer(holder: SurfaceHolder) {
+    private fun startLocalContainerJni(holder: SurfaceHolder) {
         val surface = holder.surface
         val windowManager = windowManager
         val defaultDisplay = windowManager.defaultDisplay
         val displayMetrics = DisplayMetrics()
         defaultDisplay.getRealMetrics(displayMetrics)
         val dpi = displayMetrics.densityDpi
-        Log.i(TAG, "Runtime initializing..")
+        Log.i(TAG, "Runtime initializing (JNI mode)..")
         if(Anbox.initRuntime(mSurfaceView.width, mSurfaceView.height, dpi)) {
             Anbox.createSurface(surface)
             // Create required directories before starting runtime
@@ -91,6 +96,96 @@ class MainActivity : AppCompatActivity() {
         }
         else {
             Anbox.createSurface(surface)
+        }
+    }
+    
+    private fun startEmbeddedServerAndConnect(holder: SurfaceHolder) {
+        val displayMetrics = DisplayMetrics()
+        windowManager.defaultDisplay.getRealMetrics(displayMetrics)
+        val dpi = displayMetrics.densityDpi
+        
+        val localPort = SettingsActivity.getLocalServerPort(this)
+        val localAdbPort = SettingsActivity.getLocalAdbPort(this)
+        
+        Log.i(TAG, "Starting embedded server on port $localPort (ADB: $localAdbPort)")
+        
+        // Ensure required directories exist
+        ensureRequiredDirectories()
+        
+        // Start the embedded server process
+        thread {
+            try {
+                val serverPath = applicationInfo.nativeLibraryDir + "/libananbox-server.so"
+                val prootPath = applicationInfo.nativeLibraryDir + "/libproot.so"
+                val basePath = filesDir.absolutePath
+                
+                val command = mutableListOf(
+                    serverPath,
+                    "-b", basePath,
+                    "-P", prootPath,
+                    "-a", "127.0.0.1",
+                    "-p", localPort.toString(),
+                    "-w", mSurfaceView.width.toString(),
+                    "-h", mSurfaceView.height.toString(),
+                    "-d", dpi.toString(),
+                    "-A", "127.0.0.1",
+                    "-D", localAdbPort.toString()
+                )
+                
+                Log.i(TAG, "Executing: ${command.joinToString(" ")}")
+                
+                val processBuilder = ProcessBuilder(command)
+                processBuilder.environment()["PROOT_TMP_DIR"] = filesDir.absolutePath + "/tmp"
+                processBuilder.redirectErrorStream(true)
+                
+                embeddedServerProcess = processBuilder.start()
+                
+                mainHandler.post {
+                    Toast.makeText(this@MainActivity, 
+                        getString(R.string.embedded_server_started, localPort),
+                        Toast.LENGTH_SHORT).show()
+                }
+                
+                // Wait a moment for the server to start, then connect
+                Thread.sleep(2000)
+                
+                mainHandler.post {
+                    remoteAddress = "127.0.0.1"
+                    remotePort = localPort
+                    connectToRemoteServer(holder)
+                }
+                
+                // Read server output in background and save to log file
+                val serverLogFile = File(filesDir, "server.log")
+                val logWriter = serverLogFile.bufferedWriter()
+                val reader = embeddedServerProcess?.inputStream?.bufferedReader()
+                try {
+                    reader?.forEachLine { line ->
+                        Log.i(TAG, "Server: $line")
+                        logWriter.write(line)
+                        logWriter.newLine()
+                        logWriter.flush()
+                    }
+                } finally {
+                    logWriter.close()
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start embedded server", e)
+                mainHandler.post {
+                    Toast.makeText(this@MainActivity, 
+                        getString(R.string.embedded_server_failed, e.message),
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
+    private fun stopEmbeddedServer() {
+        embeddedServerProcess?.let { process ->
+            Log.i(TAG, "Stopping embedded server...")
+            process.destroy()
+            embeddedServerProcess = null
         }
     }
     
@@ -228,6 +323,11 @@ class MainActivity : AppCompatActivity() {
                 SettingsActivity.getRemotePort(this))
             
             Log.i(TAG, "Remote mode enabled: $remoteAddress:$remotePort")
+        } else {
+            // Check container mode for local operation
+            val containerMode = SettingsActivity.getContainerMode(this)
+            isEmbeddedServerMode = (containerMode == SettingsActivity.CONTAINER_MODE_SERVER)
+            Log.i(TAG, "Local mode - container mode: $containerMode (embedded server: $isEmbeddedServerMode)")
         }
         
         // For local mode, check if rootfs exists
@@ -261,7 +361,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        if (!isRemoteMode) {
+        if (!isRemoteMode && !isEmbeddedServerMode) {
             Anbox.setPath(filesDir.path)
         }
 
@@ -270,7 +370,7 @@ class MainActivity : AppCompatActivity() {
         binding.root.addView(mSurfaceView, 0)
 
         // Set touch listener based on mode
-        if (isRemoteMode) {
+        if (isRemoteMode || isEmbeddedServerMode) {
             mSurfaceView.setOnTouchListener(remoteTouchListener)
         } else {
             mSurfaceView.setOnTouchListener(Anbox)
@@ -290,8 +390,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (isRemoteMode) {
+        if (isRemoteMode || isEmbeddedServerMode) {
             streamingClient?.disconnect()
+            stopEmbeddedServer()
         } else {
             Anbox.stopRuntime()
         }

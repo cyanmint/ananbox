@@ -25,6 +25,28 @@
     <string name="rom_installer_extracting_msg">Extracting rom file..</string>
     <string name="cancel">Cancel</string>
     
+    <!-- Local Container Mode Settings -->
+    <string name="settings_local_category">Local Container</string>
+    <string name="settings_container_mode_key">container_mode</string>
+    <string name="settings_container_mode_title">Container Mode</string>
+    <string name="settings_container_mode_summary">Choose how to run the local container</string>
+    <string name="container_mode_jni">Direct (JNI)</string>
+    <string name="container_mode_server">Embedded Server</string>
+    <string name="container_mode_jni_value">jni</string>
+    <string name="container_mode_server_value">server</string>
+    <string name="settings_local_port_key">local_server_port</string>
+    <string name="settings_local_port_title">Local Server Port</string>
+    <string name="settings_local_port_summary">Port for embedded server streaming (default: 5558)</string>
+    <string name="settings_local_port_default">5558</string>
+    <string name="settings_local_adb_port_key">local_adb_port</string>
+    <string name="settings_local_adb_port_title">Local ADB Port</string>
+    <string name="settings_local_adb_port_summary">Port for ADB forwarding (default: 5555, 0 to disable)</string>
+    <string name="settings_local_adb_port_default">5555</string>
+    <string name="embedded_server_starting">Starting embedded server…</string>
+    <string name="embedded_server_started">Embedded server started on port %1$d</string>
+    <string name="embedded_server_stopped">Embedded server stopped</string>
+    <string name="embedded_server_failed">Failed to start embedded server: %1$s</string>
+    
     <!-- Remote Server Settings -->
     <string name="settings_remote_category">Remote Server</string>
     <string name="settings_remote_enabled_key">remote_enabled</string>
@@ -42,9 +64,29 @@
     <string name="settings_remote_connect_title">Connect Now</string>
     <string name="settings_remote_connect_summary">Connect to the configured remote server</string>
     
+    <!-- ADB Settings for Remote Server -->
+    <string name="settings_adb_enabled_key">adb_enabled</string>
+    <string name="settings_adb_enabled_title">Connect via ADB (scrcpy)</string>
+    <string name="settings_adb_enabled_summary">Use ADB connection instead of streaming. Enables scrcpy and other ADB tools.</string>
+    <string name="settings_adb_port_key">adb_port</string>
+    <string name="settings_adb_port_title">ADB Port</string>
+    <string name="settings_adb_port_summary">Port number for ADB connection (default: 5555)</string>
+    <string name="settings_adb_port_default">5555</string>
+    <string name="settings_adb_connect_key">adb_connect</string>
+    <string name="settings_adb_connect_title">Connect via ADB</string>
+    <string name="settings_adb_connect_summary">Connect to the remote server using ADB</string>
+    <string name="settings_adb_scrcpy_key">adb_scrcpy</string>
+    <string name="settings_adb_scrcpy_title">Launch scrcpy</string>
+    <string name="settings_adb_scrcpy_summary">Open scrcpy with the configured ADB connection</string>
+    
     <!-- Connection Status -->
     <string name="remote_connecting">Connecting to %1$s:%2$s…</string>
     <string name="remote_connected">Connected to remote server</string>
     <string name="remote_disconnected">Disconnected from server</string>
     <string name="remote_connection_failed">Failed to connect: %1$s</string>
+    <string name="adb_connecting">Connecting via ADB to %1$s:%2$s…</string>
+    <string name="adb_connect_command">adb connect %1$s:%2$s</string>
+    <string name="adb_connect_hint">Run this command to connect:\nadb connect %1$s:%2$s</string>
+    <string name="scrcpy_hint">Then run scrcpy:\nscrcpy -s %1$s:%2$s</string>
+    <string name="adb_command_copied">ADB command copied to clipboard</string>
 </resources>

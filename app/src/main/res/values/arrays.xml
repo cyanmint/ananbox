@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="container_mode_entries">
+        <item>@string/container_mode_jni</item>
+        <item>@string/container_mode_server</item>
+    </string-array>
+    
+    <string-array name="container_mode_values">
+        <item>@string/container_mode_jni_value</item>
+        <item>@string/container_mode_server_value</item>
+    </string-array>
+</resources>
