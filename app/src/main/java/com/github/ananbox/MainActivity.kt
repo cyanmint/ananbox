@@ -170,14 +170,20 @@ class MainActivity : AppCompatActivity() {
         // Create tmp directory for proot (PROOT_TMP_DIR)
         val tmpDir = File(filesDir, "tmp")
         if (!tmpDir.exists()) {
-            tmpDir.mkdirs()
+            if (!tmpDir.mkdirs()) {
+                Log.e(TAG, "Failed to create tmp directory: ${tmpDir.absolutePath}")
+                throw RuntimeException("Failed to create required tmp directory")
+            }
             Log.i(TAG, "Created tmp directory: ${tmpDir.absolutePath}")
         }
         
         // Create mnt/user/0 directory for storage binding
         val mntUserDir = File(filesDir, "rootfs/mnt/user/0")
         if (!mntUserDir.exists()) {
-            mntUserDir.mkdirs()
+            if (!mntUserDir.mkdirs()) {
+                Log.e(TAG, "Failed to create mnt/user/0 directory: ${mntUserDir.absolutePath}")
+                throw RuntimeException("Failed to create required mnt/user/0 directory")
+            }
             Log.i(TAG, "Created mnt/user/0 directory: ${mntUserDir.absolutePath}")
         }
     }
