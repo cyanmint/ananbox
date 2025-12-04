@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <string>
 #include <cstdint>
+#include <cstdlib>
 #include <unistd.h>
 #include <android/input.h>
 #include "anbox/graphics/emugl/Renderer.h"
@@ -182,12 +183,18 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring proot_) {
     char cmd[255];
+    char tmp_dir[512];
     if (fork() != 0) {
         return;
     }
     sigset_t signals_to_unblock;
     sigfillset(&signals_to_unblock);
     sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
+    
+    // Set PROOT_TMP_DIR environment variable before starting the container
+    snprintf(tmp_dir, sizeof(tmp_dir), "%s/tmp", path);
+    setenv("PROOT_TMP_DIR", tmp_dir, 1);
+    
     const char *proot = env->GetStringUTFChars(proot_, 0);
     sprintf(cmd, "sh %s/rootfs/run.sh %s %s", path, path, proot);
     env->ReleaseStringUTFChars(proot_, proot);
