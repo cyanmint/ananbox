@@ -1,3 +1,0 @@
-/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/_deps/libunwind-populate/CMakeFiles/libunwind.dir
-/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/_deps/libunwind-populate/CMakeFiles/edit_cache.dir
-/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/_deps/libunwind-populate/CMakeFiles/rebuild_cache.dir

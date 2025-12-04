@@ -1,2 +1,0 @@
-/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar qc libGLESv2_dec.a CMakeFiles/GLESv2_dec.dir/GLESv2_dec/GLESv2Decoder.cpp.o CMakeFiles/GLESv2_dec.dir/GLESv2_dec/gles2_dec.cpp.o CMakeFiles/GLESv2_dec.dir/GLESv2_dec/gles2_server_context.cpp.o
-/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib libGLESv2_dec.a

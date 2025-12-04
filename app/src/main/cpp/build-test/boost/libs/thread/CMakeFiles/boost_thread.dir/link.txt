@@ -1,2 +1,0 @@
-/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar qc libboost_thread.a CMakeFiles/boost_thread.dir/src/pthread/thread.cpp.o CMakeFiles/boost_thread.dir/src/pthread/once.cpp.o CMakeFiles/boost_thread.dir/src/future.cpp.o
-/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib libboost_thread.a

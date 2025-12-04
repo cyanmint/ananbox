@@ -1,2 +1,0 @@
-/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar qc libboost_exception.a CMakeFiles/boost_exception.dir/src/clone_current_exception_non_intrusive.cpp.o
-/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib libboost_exception.a

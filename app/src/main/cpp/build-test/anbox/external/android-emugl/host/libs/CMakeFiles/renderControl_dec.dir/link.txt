@@ -1,2 +1,0 @@
-/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar qc librenderControl_dec.a CMakeFiles/renderControl_dec.dir/GLESv1_dec/renderControl_dec.cpp.o CMakeFiles/renderControl_dec.dir/GLESv1_dec/renderControl_server_context.cpp.o
-/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib librenderControl_dec.a

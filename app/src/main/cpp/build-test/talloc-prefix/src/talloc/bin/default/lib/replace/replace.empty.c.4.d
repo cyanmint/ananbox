@@ -1,2 +1,0 @@
-/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/talloc-prefix/src/talloc/bin/default/lib/replace/replace.empty.c.4.o: \
-  lib/replace/replace.empty.c

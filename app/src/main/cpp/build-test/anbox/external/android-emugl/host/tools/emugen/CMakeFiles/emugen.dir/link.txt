@@ -1,1 +1,0 @@
-/usr/bin/clang++ -std=c++11 -Wall -Xlinker --dependency-file=CMakeFiles/emugen.dir/link.d CMakeFiles/emugen.dir/ApiGen.cpp.o CMakeFiles/emugen.dir/EntryPoint.cpp.o CMakeFiles/emugen.dir/main.cpp.o CMakeFiles/emugen.dir/Parser.cpp.o CMakeFiles/emugen.dir/strUtils.cpp.o CMakeFiles/emugen.dir/TypeFactory.cpp.o -o emugen  -latomic -lm
