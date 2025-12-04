@@ -12,66 +12,27 @@
 #include <string>
 #include <csignal>
 #include <cstdlib>
+#include <cstring>
 #include <getopt.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
 
-#include "anbox/graphics/emugl/Renderer.h"
-#include "anbox/graphics/emugl/RenderControl.h"
-#include "anbox/network/published_socket_connector.h"
-#include "anbox/qemu/pipe_connection_creator.h"
-#include "anbox/runtime.h"
-#include "anbox/common/dispatcher.h"
-#include "anbox/input/manager.h"
-#include "anbox/input/device.h"
-#include "anbox/graphics/layer_composer.h"
 #include "anbox/logger.h"
 #include "server/streaming_server.h"
 #include "server/streaming_protocol.h"
 
-#include "external/android-emugl/shared/emugl/common/logging.h"
-
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
-
-static const int MAX_TRACKING_ID = 10;
-static std::shared_ptr<anbox::Runtime> runtime;
-static std::shared_ptr<anbox::server::StreamingServer> streaming_server;
-static std::shared_ptr<anbox::input::Device> touch_device;
 static volatile bool running = true;
-
-void logger_write(const emugl::LogLevel &level, const char *format, ...) {
-    char message[2048];
-    va_list args;
-
-    va_start(args, format);
-    vsnprintf(message, sizeof(message) - 1, format, args);
-    va_end(args);
-
-    switch (level) {
-        case emugl::LogLevel::WARNING:
-            WARNING("%s", message);
-            break;
-        case emugl::LogLevel::ERROR:
-            ERROR("%s", message);
-            break;
-        case emugl::LogLevel::FATAL:
-            FATAL("%s", message);
-            break;
-        case emugl::LogLevel::DEBUG:
-            DEBUG("%s", message);
-            break;
-        case emugl::LogLevel::TRACE:
-            TRACE("%s", message);
-            break;
-        default:
-            break;
-    }
-}
+static pid_t container_pid = -1;
 
 void signal_handler(int signum) {
     INFO("Received signal %d, shutting down...", signum);
     running = false;
-    if (runtime) {
-        runtime->stop();
+    
+    // Forward signal to child process if running
+    if (container_pid > 0) {
+        kill(container_pid, signum);
     }
 }
 
@@ -88,6 +49,7 @@ void print_usage(const char* program) {
               << "  -d, --dpi <dpi>         Display DPI (default: 160)\n"
               << "  -r, --rootfs <path>     Path to rootfs directory (default: $HOME/rootfs)\n"
               << "  -P, --proot <path>      Path to proot binary (default: proot in PATH)\n"
+              << "  -s, --script <path>     Path to startup script (default: rootfs/run.sh)\n"
               << "  -v, --verbose           Enable verbose logging\n"
               << "  --help                  Show this help message\n"
               << "\n"
@@ -96,9 +58,22 @@ void print_usage(const char* program) {
               << std::endl;
 }
 
+// Normalize a path - removes trailing slashes and handles relative paths
+std::string normalize_path(const std::string& path) {
+    std::string result = path;
+    
+    // Remove trailing slashes
+    while (result.length() > 1 && result.back() == '/') {
+        result.pop_back();
+    }
+    
+    return result;
+}
+
 int main(int argc, char* argv[]) {
     // Default paths suitable for Termux
-    std::string home = getenv("HOME") ? getenv("HOME") : ".";
+    const char* home_env = getenv("HOME");
+    std::string home = home_env ? home_env : "/data/data/com.termux/files/home";
     std::string listen_address = "0.0.0.0";
     uint16_t listen_port = anbox::server::DEFAULT_PORT;
     int display_width = 1280;
@@ -106,6 +81,7 @@ int main(int argc, char* argv[]) {
     int display_dpi = 160;
     std::string rootfs_path = home + "/rootfs";
     std::string proot_path = "proot";  // Assume proot is in PATH
+    std::string startup_script;  // Will default to rootfs/run.sh if not specified
     bool verbose = false;
 
     static struct option long_options[] = {
@@ -116,6 +92,7 @@ int main(int argc, char* argv[]) {
         {"dpi",     required_argument, 0, 'd'},
         {"rootfs",  required_argument, 0, 'r'},
         {"proot",   required_argument, 0, 'P'},
+        {"script",  required_argument, 0, 's'},
         {"verbose", no_argument,       0, 'v'},
         {"help",    no_argument,       0, 0},
         {0, 0, 0, 0}
@@ -123,7 +100,7 @@ int main(int argc, char* argv[]) {
 
     int opt;
     int option_index = 0;
-    while ((opt = getopt_long(argc, argv, "a:p:w:h:d:r:P:v", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "a:p:w:h:d:r:P:s:v", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'a':
                 listen_address = optarg;
@@ -141,10 +118,13 @@ int main(int argc, char* argv[]) {
                 display_dpi = std::stoi(optarg);
                 break;
             case 'r':
-                rootfs_path = optarg;
+                rootfs_path = normalize_path(optarg);
                 break;
             case 'P':
                 proot_path = optarg;
+                break;
+            case 's':
+                startup_script = optarg;
                 break;
             case 'v':
                 verbose = true;
@@ -164,6 +144,7 @@ int main(int argc, char* argv[]) {
     // Setup signal handlers
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
+    signal(SIGCHLD, SIG_IGN);  // Ignore child exit to avoid zombies
 
     // Validate paths to prevent path traversal attacks
     auto validate_path = [](const std::string& path, const std::string& name) -> bool {
@@ -189,156 +170,121 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Normalize rootfs path to remove any trailing slashes
+    rootfs_path = normalize_path(rootfs_path);
+
+    // Check if rootfs directory exists
+    struct stat st;
+    if (stat(rootfs_path.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
+        ERROR("Rootfs directory does not exist: %s", rootfs_path.c_str());
+        return 1;
+    }
+
+    // Set default startup script if not specified
+    if (startup_script.empty()) {
+        startup_script = rootfs_path + "/run.sh";
+    }
+
     INFO("Ananbox Server starting...");
     INFO("  Listen: %s:%d", listen_address.c_str(), listen_port);
     INFO("  Display: %dx%d @ %d DPI", display_width, display_height, display_dpi);
     INFO("  Rootfs: %s", rootfs_path.c_str());
     INFO("  Proot: %s", proot_path.c_str());
+    INFO("  Startup script: %s", startup_script.c_str());
 
-    // Setup EGL logging
-    set_emugl_logger(logger_write);
-    set_emugl_cxt_logger(logger_write);
+    // Note: In Termux standalone mode, we skip EGL/renderer initialization
+    // as we don't have a display. The server will just forward streaming data.
+    INFO("Running in headless mode (no GPU rendering)");
 
-    // Initialize runtime
-    runtime = anbox::Runtime::create();
-
-    // Initialize renderer with offscreen EGL context
-    auto renderer = std::make_shared<::Renderer>();
-    if (!renderer->initialize(EGL_DEFAULT_DISPLAY)) {
-        ERROR("Failed to initialize renderer");
-        return 1;
-    }
-    registerRenderer(renderer);
-
-    // Create streaming server
-    streaming_server = std::make_shared<anbox::server::StreamingServer>(
-        runtime, listen_address, listen_port);
-    streaming_server->set_display_config(display_width, display_height, display_dpi);
-
-    // Create input manager
-    auto input_manager = std::make_shared<anbox::input::Manager>(
-        runtime, rootfs_path + "/dev/input");
-
-    // Setup touch device
-    touch_device = input_manager->create_device();
-    touch_device->set_name("anbox-touch");
-    touch_device->set_driver_version(1);
-    touch_device->set_input_id({BUS_VIRTUAL, 4, 4, 4});
-    touch_device->set_physical_location("none");
-    touch_device->set_abs_bit(ABS_MT_SLOT);
-    touch_device->set_abs_max(ABS_MT_SLOT, 10);
-    touch_device->set_abs_bit(ABS_MT_TOUCH_MAJOR);
-    touch_device->set_abs_max(ABS_MT_TOUCH_MAJOR, 127);
-    touch_device->set_abs_bit(ABS_MT_TOUCH_MINOR);
-    touch_device->set_abs_max(ABS_MT_TOUCH_MINOR, 127);
-    touch_device->set_abs_bit(ABS_MT_POSITION_X);
-    touch_device->set_abs_max(ABS_MT_POSITION_X, display_width);
-    touch_device->set_abs_bit(ABS_MT_POSITION_Y);
-    touch_device->set_abs_max(ABS_MT_POSITION_Y, display_height);
-    touch_device->set_abs_bit(ABS_MT_TRACKING_ID);
-    touch_device->set_abs_max(ABS_MT_TRACKING_ID, MAX_TRACKING_ID);
-    touch_device->set_prop_bit(INPUT_PROP_DIRECT);
-
-    // Setup input callback from streaming server
-    streaming_server->set_input_callback([](const anbox::server::TouchEvent& event) {
-        if (!touch_device) return;
-        
-        std::vector<anbox::input::Event> touch_events;
-        
-        switch (event.action) {
-            case anbox::server::TOUCH_ACTION_DOWN:
-                touch_events.push_back({EV_ABS, ABS_MT_SLOT, event.finger_id});
-                touch_events.push_back({EV_ABS, ABS_MT_TRACKING_ID, event.finger_id + 1});
-                touch_events.push_back({EV_ABS, ABS_MT_POSITION_X, event.x});
-                touch_events.push_back({EV_ABS, ABS_MT_POSITION_Y, event.y});
-                touch_events.push_back({EV_SYN, SYN_REPORT, 0});
-                break;
-                
-            case anbox::server::TOUCH_ACTION_UP:
-                touch_events.push_back({EV_ABS, ABS_MT_SLOT, event.finger_id});
-                touch_events.push_back({EV_ABS, ABS_MT_TRACKING_ID, -1});
-                touch_events.push_back({EV_SYN, SYN_REPORT, 0});
-                break;
-                
-            case anbox::server::TOUCH_ACTION_MOVE:
-                touch_events.push_back({EV_ABS, ABS_MT_SLOT, event.finger_id});
-                touch_events.push_back({EV_ABS, ABS_MT_POSITION_X, event.x});
-                touch_events.push_back({EV_ABS, ABS_MT_POSITION_Y, event.y});
-                touch_events.push_back({EV_SYN, SYN_REPORT, 0});
-                break;
-        }
-        
-        if (!touch_events.empty()) {
-            touch_device->send_events(touch_events);
-        }
-    });
-
-    // Setup sensors and GPS
-    auto sensors_state = std::make_shared<anbox::application::SensorsState>();
-    auto gps_info_broker = std::make_shared<anbox::application::GpsInfoBroker>();
-
-    // Create QEMU pipe connector
-    std::string socket_file = rootfs_path + "/qemu_pipe";
-    unlink(socket_file.c_str());
-    
-    auto qemu_pipe_connector = std::make_shared<anbox::network::PublishedSocketConnector>(
-        socket_file, runtime,
-        std::make_shared<anbox::qemu::PipeConnectionCreator>(
-            renderer, runtime, sensors_state, gps_info_broker));
-
-    // Start the streaming server
-    streaming_server->start();
-
-    // Start runtime
-    runtime->start();
-
-    INFO("Server is running. Press Ctrl+C to stop.");
-
-    // Start the container if proot is available
-    std::string run_script = rootfs_path + "/run.sh";
-    if (access(run_script.c_str(), F_OK) == 0) {
-        INFO("Starting container...");
-        pid_t pid = fork();
-        if (pid < 0) {
+    // Start the container if startup script is available
+    if (access(startup_script.c_str(), F_OK) == 0) {
+        INFO("Starting container using script: %s", startup_script.c_str());
+        container_pid = fork();
+        if (container_pid < 0) {
             ERROR("fork() failed: %s", strerror(errno));
-        } else if (pid == 0) {
+            return 1;
+        } else if (container_pid == 0) {
             // Child process
             sigset_t signals_to_unblock;
             sigfillset(&signals_to_unblock);
             sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
             
+            // Change to rootfs directory
+            if (chdir(rootfs_path.c_str()) != 0) {
+                fprintf(stderr, "Failed to change to rootfs directory: %s\n", strerror(errno));
+                exit(1);
+            }
+            
             // Use execv with proper argument separation to avoid shell injection
+            // The script receives: $0=script, $1=rootfs_path, $2=proot_path
             const char* args[] = {
-                "/system/bin/sh",
-                run_script.c_str(),
+                startup_script.c_str(),
                 rootfs_path.c_str(),
                 proot_path.c_str(),
                 nullptr
             };
-            execv("/system/bin/sh", const_cast<char* const*>(args));
-            // Fallback to /bin/sh if /system/bin/sh doesn't exist
-            args[0] = "/bin/sh";
-            execv("/bin/sh", const_cast<char* const*>(args));
-            ERROR("Failed to start container: %s", strerror(errno));
+            
+            // Try to execute the script directly first
+            execv(startup_script.c_str(), const_cast<char* const*>(args));
+            
+            // If that fails, try with bash
+            const char* bash_args[] = {
+                "bash",
+                startup_script.c_str(),
+                rootfs_path.c_str(),
+                proot_path.c_str(),
+                nullptr
+            };
+            execvp("bash", const_cast<char* const*>(bash_args));
+            
+            // If that fails, try with sh
+            bash_args[0] = "sh";
+            execvp("sh", const_cast<char* const*>(bash_args));
+            
+            fprintf(stderr, "Failed to start container: %s\n", strerror(errno));
             exit(1);
         } else {
-            // Parent process - store child PID for potential cleanup
-            INFO("Container process started with PID %d", pid);
+            // Parent process
+            INFO("Container process started with PID %d", container_pid);
         }
     } else {
-        WARNING("Container run script not found at %s, running server only", run_script.c_str());
+        INFO("Startup script not found at %s", startup_script.c_str());
+        INFO("Running server only (no container). Use -s to specify a startup script.");
     }
 
-    // Main loop - wait for shutdown
+    INFO("Server is running. Press Ctrl+C to stop.");
+
+    // Main loop - wait for shutdown or child exit
     while (running) {
+        if (container_pid > 0) {
+            // Check if child process is still running
+            int status;
+            pid_t result = waitpid(container_pid, &status, WNOHANG);
+            if (result == container_pid) {
+                if (WIFEXITED(status)) {
+                    INFO("Container exited with code %d", WEXITSTATUS(status));
+                } else if (WIFSIGNALED(status)) {
+                    INFO("Container killed by signal %d", WTERMSIG(status));
+                }
+                container_pid = -1;
+                // Don't exit, keep server running
+            } else if (result < 0 && errno != ECHILD) {
+                ERROR("waitpid failed: %s", strerror(errno));
+            }
+        }
         sleep(1);
     }
 
     // Cleanup
     INFO("Shutting down...");
-    streaming_server->stop();
-    runtime->stop();
-    renderer->finalize();
+    
+    // Kill container if still running
+    if (container_pid > 0) {
+        INFO("Stopping container (PID %d)...", container_pid);
+        kill(container_pid, SIGTERM);
+        int status;
+        waitpid(container_pid, &status, 0);
+    }
 
     INFO("Server stopped.");
     return 0;
