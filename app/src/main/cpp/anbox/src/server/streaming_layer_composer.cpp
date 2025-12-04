@@ -9,6 +9,7 @@
  */
 
 #include "server/streaming_layer_composer.h"
+#include "server/software_color_buffer.h"
 #include "anbox/graphics/emugl/Renderer.h"
 #include "anbox/logger.h"
 
@@ -23,7 +24,13 @@ StreamingLayerComposer::StreamingLayerComposer(
     : LayerComposer(renderer, rect, nullptr),  // Pass nullptr for native_window
       renderer_(renderer),
       rect_(rect) {
-    INFO("StreamingLayerComposer created for %dx%d", rect_->width(), rect_->height());
+    if (renderer_) {
+        INFO("StreamingLayerComposer created for %dx%d (using EGL renderer)", 
+             rect_->width(), rect_->height());
+    } else {
+        INFO("StreamingLayerComposer created for %dx%d (using software color buffer store)", 
+             rect_->width(), rect_->height());
+    }
     
     // Pre-allocate pixel buffer for frame readback
     pixel_buffer_.resize(rect_->width() * rect_->height() * 4); // RGBA
@@ -42,11 +49,6 @@ void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
         return;
     }
     
-    if (!renderer_) {
-        WARNING("No renderer available for frame capture");
-        return;
-    }
-    
     uint32_t width = rect_->width();
     uint32_t height = rect_->height();
     
@@ -54,8 +56,9 @@ void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
     static int call_count = 0;
     call_count++;
     if (call_count == 1 || (call_count % 100) == 0) {
-        INFO("submit_layers called (count=%d) with %zu renderables, display %ux%u",
-             call_count, renderables.size(), width, height);
+        INFO("submit_layers called (count=%d) with %zu renderables, display %ux%u, mode=%s",
+             call_count, renderables.size(), width, height,
+             renderer_ ? "EGL" : "software");
         for (const auto& r : renderables) {
             INFO("  Renderable '%s': buffer=%u, screen_pos=(%d,%d,%d,%d), crop=(%d,%d,%d,%d)",
                  r.name().c_str(), r.buffer(),
@@ -76,7 +79,6 @@ void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
     }
     
     // Composite all renderables into the frame buffer
-    // Find the topmost renderable that covers the full screen, or composite all
     for (const auto& r : renderables) {
         if (r.buffer() == 0) {
             DEBUG("Skipping renderable '%s': buffer is 0", r.name().c_str());
@@ -100,26 +102,43 @@ void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
         // Allocate temporary buffer for this renderable
         std::vector<uint8_t> temp_buffer(buf_width * buf_height * 4, 0);
         
-        // Read the color buffer content
-        renderer_->readColorBuffer(r.buffer(), 
-                                   crop.left() > 0 ? crop.left() : 0,
-                                   crop.top() > 0 ? crop.top() : 0,
-                                   buf_width, buf_height,
-                                   GL_RGBA, GL_UNSIGNED_BYTE,
-                                   temp_buffer.data());
+        // Read the color buffer content - use software store or EGL renderer
+        bool read_success = false;
+        if (renderer_) {
+            // Use EGL renderer
+            renderer_->readColorBuffer(r.buffer(), 
+                                       crop.left() > 0 ? crop.left() : 0,
+                                       crop.top() > 0 ? crop.top() : 0,
+                                       buf_width, buf_height,
+                                       GL_RGBA, GL_UNSIGNED_BYTE,
+                                       temp_buffer.data());
+            read_success = true;
+        } else {
+            // Use software color buffer store
+            read_success = SoftwareColorBufferStore::instance().read(
+                r.buffer(),
+                crop.left() > 0 ? crop.left() : 0,
+                crop.top() > 0 ? crop.top() : 0,
+                buf_width, buf_height,
+                GL_RGBA, GL_UNSIGNED_BYTE,
+                temp_buffer.data());
+            if (!read_success && call_count <= 5) {
+                WARNING("Failed to read software color buffer %u for '%s'",
+                        r.buffer(), r.name().c_str());
+            }
+        }
         
         // Check if we actually got data (simple check for non-zero content)
         bool has_data = false;
-        for (size_t i = 0; i < temp_buffer.size() && !has_data; i += 4) {
+        for (size_t i = 0; i < std::min(temp_buffer.size(), (size_t)1000) && !has_data; i += 4) {
             if (temp_buffer[i] != 0 || temp_buffer[i+1] != 0 || 
                 temp_buffer[i+2] != 0 || temp_buffer[i+3] != 0) {
                 has_data = true;
             }
         }
         if (!has_data && call_count <= 5) {
-            WARNING("readColorBuffer for '%s' (buffer=%u) returned all zeros - "
-                    "color buffer may not exist or EGL may have failed",
-                    r.name().c_str(), r.buffer());
+            WARNING("Color buffer %u for '%s' returned all zeros",
+                    r.buffer(), r.name().c_str());
         }
         
         // Composite this buffer onto the final frame
@@ -145,7 +164,6 @@ void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
                     pixel_buffer_[dst_offset + 3] = 255;
                 } else {
                     // Alpha blend
-                    uint8_t dst_a = pixel_buffer_[dst_offset + 3];
                     float alpha = src_a / 255.0f;
                     float inv_alpha = 1.0f - alpha;
                     
@@ -160,8 +178,10 @@ void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
             }
         }
         
-        DEBUG("Composited renderable '%s' buffer=%u at (%d,%d) size %dx%d",
-              r.name().c_str(), r.buffer(), dest_x, dest_y, buf_width, buf_height);
+        if (has_data) {
+            DEBUG("Composited renderable '%s' buffer=%u at (%d,%d) size %dx%d",
+                  r.name().c_str(), r.buffer(), dest_x, dest_y, buf_width, buf_height);
+        }
     }
     
     // Call the frame callback with the composited pixel data

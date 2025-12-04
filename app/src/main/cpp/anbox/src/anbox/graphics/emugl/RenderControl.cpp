@@ -23,6 +23,10 @@
 #include "anbox/graphics/layer_composer.h"
 #include "anbox/logger.h"
 
+#ifdef ANANBOX_SERVER
+#include "server/software_color_buffer.h"
+#endif
+
 #include "external/android-emugl/shared/OpenglCodecCommon/ChecksumCalculatorThreadInfo.h"
 #include "external/android-emugl/host/include/OpenGLESDispatch/EGLDispatch.h"
 
@@ -33,10 +37,18 @@
 static const GLint rendererVersion = 1;
 static std::shared_ptr<anbox::graphics::LayerComposer> composer;
 static std::shared_ptr<Renderer> renderer;
+static bool use_software_renderer = false;
 
 void registerLayerComposer(
     const std::shared_ptr<anbox::graphics::LayerComposer> &c) {
   composer = c;
+}
+
+void enableSoftwareRenderer(bool enable) {
+  use_software_renderer = enable;
+  if (enable) {
+    INFO("Software renderer enabled for headless mode");
+  }
 }
 
 void unRegisterLayerComposer() {
@@ -254,6 +266,11 @@ static void rcDestroyWindowSurface(uint32_t windowSurface) {
 
 static uint32_t rcCreateColorBuffer(uint32_t width, uint32_t height,
                                     GLenum internalFormat) {
+#ifdef ANANBOX_SERVER
+  if (use_software_renderer) {
+    return anbox::server::SoftwareColorBufferStore::instance().create(width, height);
+  }
+#endif
   if (!renderer)
     return 0;
 
@@ -261,6 +278,12 @@ static uint32_t rcCreateColorBuffer(uint32_t width, uint32_t height,
 }
 
 static int rcOpenColorBuffer2(uint32_t colorbuffer) {
+#ifdef ANANBOX_SERVER
+  if (use_software_renderer) {
+    // Software color buffers don't need open/close refcounting
+    return 0;
+  }
+#endif
   if (!renderer)
     return -1;
 
@@ -274,6 +297,12 @@ static void rcOpenColorBuffer(uint32_t colorbuffer) {
 }
 
 static void rcCloseColorBuffer(uint32_t colorbuffer) {
+#ifdef ANANBOX_SERVER
+  if (use_software_renderer) {
+    anbox::server::SoftwareColorBufferStore::instance().destroy(colorbuffer);
+    return;
+  }
+#endif
   if (!renderer)
     return;
 
@@ -337,6 +366,13 @@ static EGLint rcColorBufferCacheFlush(uint32_t, EGLint,
 static void rcReadColorBuffer(uint32_t colorBuffer, GLint x, GLint y,
                               GLint width, GLint height, GLenum format,
                               GLenum type, void *pixels) {
+#ifdef ANANBOX_SERVER
+  if (use_software_renderer) {
+    anbox::server::SoftwareColorBufferStore::instance().read(
+        colorBuffer, x, y, width, height, format, type, pixels);
+    return;
+  }
+#endif
   if (!renderer)
     return;
 
@@ -346,6 +382,13 @@ static void rcReadColorBuffer(uint32_t colorBuffer, GLint x, GLint y,
 static int rcUpdateColorBuffer(uint32_t colorBuffer, GLint x, GLint y,
                                GLint width, GLint height, GLenum format,
                                GLenum type, void *pixels) {
+#ifdef ANANBOX_SERVER
+  if (use_software_renderer) {
+    anbox::server::SoftwareColorBufferStore::instance().update(
+        colorBuffer, x, y, width, height, format, type, pixels);
+    return 0;
+  }
+#endif
   if (!renderer)
     return -1;
 

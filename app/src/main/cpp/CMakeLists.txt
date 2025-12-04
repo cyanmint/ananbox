@@ -96,10 +96,13 @@ if(BUILD_ANANBOX_SERVER AND ANDROID)
     set(SERVER_SOURCES
         ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_server.cpp
         ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_layer_composer.cpp
+        ${CMAKE_SOURCE_DIR}/anbox/src/server/software_color_buffer.cpp
         ${CMAKE_SOURCE_DIR}/anbox/src/server/main.cpp
     )
 
     add_executable(ananbox-server ${SERVER_SOURCES})
+    
+    target_compile_definitions(ananbox-server PRIVATE ANANBOX_SERVER)
     
     target_include_directories(ananbox-server PRIVATE
         ${CMAKE_SOURCE_DIR}/anbox/src/server

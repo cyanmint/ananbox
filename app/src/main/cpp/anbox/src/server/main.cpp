@@ -313,16 +313,18 @@ int main(int argc, char* argv[]) {
     display_info->set_dpi(display_dpi);
 
     // Initialize renderer with default display (may fail in headless mode)
-    if (!renderer_->initialize(EGL_DEFAULT_DISPLAY)) {
-        WARNING("Failed to initialize EGL renderer - running in headless mode");
-        WARNING("Some OpenGL operations may not work, but color buffer management should still function");
+    bool egl_initialized = renderer_->initialize(EGL_DEFAULT_DISPLAY);
+    if (!egl_initialized) {
+        WARNING("Failed to initialize EGL renderer - using software color buffer storage");
+        INFO("The server will capture raw pixel data from the container");
+        INFO("The client app will handle actual rendering");
+        // Enable software renderer mode - stores color buffers in memory
+        enableSoftwareRenderer(true);
     } else {
         INFO("EGL renderer initialized successfully");
+        // Still register renderer for potential use
+        registerRenderer(renderer_);
     }
-    
-    // Always register the renderer, even if EGL fails - the renderer still manages
-    // color buffers which the container writes to via qemu_pipe
-    registerRenderer(renderer_);
 
     // Create streaming server
     std::shared_ptr<anbox::server::StreamingServer> streaming_server;
@@ -339,8 +341,9 @@ int main(int argc, char* argv[]) {
         streaming_server->set_display_config(display_width, display_height, display_dpi);
         
         // Create streaming layer composer that will capture frames and send to clients
+        // Pass nullptr for renderer when using software mode - it will use SoftwareColorBufferStore
         streaming_composer_ = std::make_shared<anbox::server::StreamingLayerComposer>(
-            renderer_, frame);
+            egl_initialized ? renderer_ : nullptr, frame);
         streaming_composer_->set_frame_callback(
             [streaming_server](const void* data, uint32_t width, uint32_t height, uint32_t stride) {
                 streaming_server->send_frame(data, width, height, 

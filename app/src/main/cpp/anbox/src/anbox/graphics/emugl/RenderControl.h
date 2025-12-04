@@ -32,5 +32,6 @@ void registerLayerComposer(
     const std::shared_ptr<anbox::graphics::LayerComposer> &c);
 void registerRenderer(const std::shared_ptr<Renderer> &r);
 void unRegisterLayerComposer();
+void enableSoftwareRenderer(bool enable);
 
 #endif
