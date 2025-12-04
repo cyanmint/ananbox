@@ -32,7 +32,7 @@ void StreamingLayerComposer::set_frame_callback(FrameCallback callback) {
     frame_callback_ = std::move(callback);
 }
 
-void StreamingLayerComposer::submit_layers(const graphics::RenderableList& renderables) {
+void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
     if (!frame_callback_) {
         // No callback set, nothing to do
         return;

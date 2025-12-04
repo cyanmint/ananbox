@@ -80,9 +80,6 @@ jobs:
     - name: Remove swig to disable proot Python extension
       run: sudo apt-get remove -y swig swig4.0 || true
 
-    - name: Install Boost
-      run: sudo apt-get update && sudo apt-get install -y libboost-all-dev
-
     - name: Create build directory
       run: mkdir -p app/src/main/cpp/build-${{ matrix.abi }}
 

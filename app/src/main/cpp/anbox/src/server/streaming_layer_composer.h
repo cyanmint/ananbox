@@ -38,7 +38,7 @@ public:
     void set_frame_callback(FrameCallback callback);
     
     // Override submit_layers to capture frames instead of displaying
-    void submit_layers(const graphics::RenderableList& renderables) override;
+    void submit_layers(const RenderableList& renderables) override;
 
 private:
     std::shared_ptr<::Renderer> renderer_;

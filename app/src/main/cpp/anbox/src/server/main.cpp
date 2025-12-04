@@ -51,8 +51,8 @@ static std::shared_ptr<anbox::input::Device> touch_;
 static std::shared_ptr<anbox::graphics::Rect> frame;
 static std::shared_ptr<anbox::server::StreamingLayerComposer> streaming_composer_;
 
-// Logging callback for emugl
-static void emugl_logger(const emugl::LogLevel& level, const char* format, ...) {
+// Logging callback for emugl (assigns to extern logger_t emugl_logger from logging.h)
+static void server_emugl_logger(const emugl::LogLevel& level, const char* format, ...) {
     char message[2048];
     va_list args;
     va_start(args, format);
@@ -297,8 +297,8 @@ int main(int argc, char* argv[]) {
     INFO("  Startup script: %s", startup_script.c_str());
 
     // Initialize emugl logging
-    set_emugl_logger(emugl_logger);
-    set_emugl_cxt_logger(emugl_logger);
+    set_emugl_logger(server_emugl_logger);
+    set_emugl_cxt_logger(server_emugl_logger);
 
     // Create runtime for async I/O
     rt = anbox::Runtime::create();
