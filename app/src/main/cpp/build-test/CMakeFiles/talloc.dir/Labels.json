@@ -1,0 +1,43 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/CMakeFiles/talloc"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/CMakeFiles/talloc.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/CMakeFiles/talloc-complete.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/talloc-prefix/src/talloc-stamp/talloc-build.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/talloc-prefix/src/talloc-stamp/talloc-configure.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/talloc-prefix/src/talloc-stamp/talloc-download.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/talloc-prefix/src/talloc-stamp/talloc-install.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/talloc-prefix/src/talloc-stamp/talloc-mkdir.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/talloc-prefix/src/talloc-stamp/talloc-patch.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/talloc-prefix/src/talloc-stamp/talloc-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"talloc"
+		],
+		"name" : "talloc"
+	}
+}

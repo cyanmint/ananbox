@@ -1,0 +1,2 @@
+/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar qc libOpenGLESDispatch.a CMakeFiles/OpenGLESDispatch.dir/libOpenGLESDispatch/EGLDispatch.cpp.o CMakeFiles/OpenGLESDispatch.dir/libOpenGLESDispatch/GLESv2Dispatch.cpp.o CMakeFiles/OpenGLESDispatch.dir/libOpenGLESDispatch/GLESv1Dispatch.cpp.o
+/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib libOpenGLESDispatch.a

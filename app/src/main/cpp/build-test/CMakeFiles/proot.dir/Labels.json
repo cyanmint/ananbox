@@ -1,0 +1,43 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/CMakeFiles/proot"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/CMakeFiles/proot.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/CMakeFiles/proot-complete.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/proot-prefix/src/proot-stamp/proot-build.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/proot-prefix/src/proot-stamp/proot-configure.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/proot-prefix/src/proot-stamp/proot-download.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/proot-prefix/src/proot-stamp/proot-install.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/proot-prefix/src/proot-stamp/proot-mkdir.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/proot-prefix/src/proot-stamp/proot-patch.rule"
+		},
+		{
+			"file" : "/home/runner/work/ananbox/ananbox/app/src/main/cpp/build-test/proot-prefix/src/proot-stamp/proot-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"proot"
+		],
+		"name" : "proot"
+	}
+}

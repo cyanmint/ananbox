@@ -11,45 +11,40 @@ if(BUILD_ANANBOX_SERVER)
         message(FATAL_ERROR "The standalone server is designed for Termux (Android). Please use the Android NDK toolchain.")
     endif()
     
-    # Build proot for Termux
-    # Path: from anbox/src/server/ go up 3 levels to app/src/main/cpp/, then into cmake/
-    include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/ProotTermux.cmake)
+    # proot is already built by the main CMakeLists.txt via cmake/Proot.cmake
+    # We just need to build the server and depend on the existing proot target
 
     set(SERVER_SOURCES
-        server/streaming_protocol.h
-        server/streaming_server.h
-        server/streaming_server.cpp
-        server/main.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/streaming_server.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
     )
 
     add_executable(ananbox-server ${SERVER_SOURCES})
     
     target_include_directories(ananbox-server PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/anbox
+        ${CMAKE_CURRENT_SOURCE_DIR}/..
+        ${CMAKE_CURRENT_SOURCE_DIR}/../anbox
         ${Boost_INCLUDE_DIRS}
     )
     
     target_link_libraries(ananbox-server
         anbox-core
         ${Boost_LIBRARIES}
-        pthread
         log
         android
         EGL
         GLESv2
     )
     
-    # Add dependency on proot for Termux builds
-    if(TARGET ${PROOT_TARGET})
-        add_dependencies(ananbox-server ${PROOT_TARGET})
+    # Add dependency on the existing proot target from cmake/Proot.cmake
+    if(TARGET proot)
+        add_dependencies(ananbox-server proot)
     endif()
 
     # Install the server binary
     install(TARGETS ananbox-server DESTINATION bin)
     
-    # Install proot alongside the server
-    if(EXISTS ${PROOT_BINARY})
-        install(PROGRAMS ${PROOT_BINARY} DESTINATION bin)
-    endif()
+    # proot binary is already built to CMAKE_LIBRARY_OUTPUT_DIRECTORY/libproot.so
+    # by the main build system
 endif()

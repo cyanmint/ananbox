@@ -101,20 +101,21 @@ jobs:
     - name: Build server
       working-directory: app/src/main/cpp/build-${{ matrix.abi }}
       run: |
-        $ANDROID_SDK_ROOT/cmake/3.22.1/bin/cmake --build . --target ananbox-server -- -j$(nproc) || echo "Server build attempted"
+        $ANDROID_SDK_ROOT/cmake/3.22.1/bin/cmake --build . --target ananbox-server -- -j$(nproc)
 
     - name: Build proot
       working-directory: app/src/main/cpp/build-${{ matrix.abi }}
       run: |
-        $ANDROID_SDK_ROOT/cmake/3.22.1/bin/cmake --build . --target proot-termux -- -j$(nproc) || echo "Proot build attempted"
+        $ANDROID_SDK_ROOT/cmake/3.22.1/bin/cmake --build . --target proot -- -j$(nproc) || echo "Proot build attempted (may fail due to cross-compilation issues)"
 
     - name: Collect build artifacts
       run: |
         mkdir -p artifacts-${{ matrix.abi }}
         # Copy server binary if it exists
         find app/src/main/cpp/build-${{ matrix.abi }} -name "ananbox-server" -type f -exec cp {} artifacts-${{ matrix.abi }}/ \; 2>/dev/null || true
-        # Copy proot binary if it exists
+        # Copy proot binary if it exists (from regular proot build or libproot.so)
         find app/src/main/cpp/build-${{ matrix.abi }} -name "proot" -type f -exec cp {} artifacts-${{ matrix.abi }}/ \; 2>/dev/null || true
+        find app/src/main/cpp/build-${{ matrix.abi }} -name "libproot.so" -type f -exec cp {} artifacts-${{ matrix.abi }}/proot \; 2>/dev/null || true
         # List what we found
         ls -la artifacts-${{ matrix.abi }}/ || echo "No artifacts found"
 

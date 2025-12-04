@@ -1,0 +1,2 @@
+/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar qc libboost_coroutine.a CMakeFiles/boost_coroutine.dir/src/detail/coroutine_context.cpp.o CMakeFiles/boost_coroutine.dir/src/exceptions.cpp.o CMakeFiles/boost_coroutine.dir/src/posix/stack_traits.cpp.o
+/usr/local/lib/android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib libboost_coroutine.a
