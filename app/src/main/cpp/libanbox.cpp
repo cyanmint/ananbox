@@ -233,6 +233,10 @@ Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     char *last_slash = strrchr(native_lib_dir, '/');
     if (last_slash != nullptr) {
         *last_slash = '\0';  // Remove the filename, keep directory
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "Invalid proot path: no directory separator found");
+        env->ReleaseStringUTFChars(proot_, proot);
+        _exit(1);
     }
     
     // Set PROOT_TMP_DIR to native library directory which has exec permission
