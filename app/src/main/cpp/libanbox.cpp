@@ -202,7 +202,6 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring proot_) {
     char cmd[255];
-    char tmp_dir[sizeof(path) + 16];  // path + "/tmp" + null terminator with margin
     if (fork() != 0) {
         return;
     }
@@ -210,13 +209,24 @@ Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     sigfillset(&signals_to_unblock);
     sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
     
-    // Set PROOT_TMP_DIR environment variable before starting the container
-    int tmp_len = snprintf(tmp_dir, sizeof(tmp_dir), "%s/tmp", path);
-    if (tmp_len > 0 && static_cast<size_t>(tmp_len) < sizeof(tmp_dir)) {
-        setenv("PROOT_TMP_DIR", tmp_dir, 1);
+    const char *proot = env->GetStringUTFChars(proot_, 0);
+    
+    // Extract the native library directory from the proot path
+    // proot path is like "/data/app/.../lib/arm64/libproot.so"
+    // We want the directory part which is executable (unlike filesDir/tmp which has noexec)
+    char native_lib_dir[PATH_MAX];
+    strncpy(native_lib_dir, proot, PATH_MAX - 1);
+    native_lib_dir[PATH_MAX - 1] = '\0';
+    char *last_slash = strrchr(native_lib_dir, '/');
+    if (last_slash != nullptr) {
+        *last_slash = '\0';  // Remove the filename, keep directory
     }
     
-    const char *proot = env->GetStringUTFChars(proot_, 0);
+    // Set PROOT_TMP_DIR to native library directory which has exec permission
+    // This is critical because proot needs to execute its loader from this directory
+    // The app's filesDir is mounted with noexec flag on modern Android
+    setenv("PROOT_TMP_DIR", native_lib_dir, 1);
+    
     sprintf(cmd, "sh %s/rootfs/run.sh %s %s", path, path, proot);
     env->ReleaseStringUTFChars(proot_, proot);
     execl("/system/bin/sh", "sh", "-c", cmd, 0);
