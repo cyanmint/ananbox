@@ -14,3 +14,4 @@
 .cxx
 local.properties
 app/src/main/cpp/build-*/
+_codeql_detected_source_root
