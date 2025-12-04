@@ -44,35 +44,58 @@ Click the bottom-right button to launch the Settings Activity, where you can:
 - Toggle verbose mode for detailed logging
 - Configure remote server connection
 
-## Standalone Server
+## Standalone Server (Termux)
 
-Ananbox includes a standalone server that can run containers on a separate Linux machine and stream graphics, audio, and input over TCP to connected clients.
+Ananbox includes a standalone server that can run containers in Termux (Android terminal emulator) and stream graphics, audio, and input over TCP to connected clients. This allows you to run the container on one Android device (or any device with Termux) and display the UI on another device using the Ananbox app.
 
-### Building the Server
+### Building the Server for Termux
 
-The server is built separately from the Android app. You need to build it on a Linux system with the following dependencies:
+The server is built using the Android NDK toolchain, targeting Termux. You need:
+- Android NDK 25.1+
 - CMake 3.22+
-- Boost (filesystem, log, system, thread, program_options)
-- EGL and OpenGL ES libraries
-- talloc library (or it will be built from source)
+
+Build using the Android NDK:
 
 ```bash
 cd app/src/main/cpp
+
+# Set up NDK environment
+export ANDROID_NDK=/path/to/android-ndk
+export ANDROID_ABI=arm64-v8a  # or x86_64
+
 mkdir build && cd build
-cmake -DBUILD_ANANBOX_SERVER=ON ..
+cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+      -DANDROID_ABI=$ANDROID_ABI \
+      -DANDROID_PLATFORM=android-24 \
+      -DBUILD_ANANBOX_SERVER=ON \
+      ..
 make ananbox-server
 ```
 
-This will build both the `ananbox-server` binary and the `proot` binary needed to run containers.
+This will build both the `ananbox-server` binary and the `proot` binary for running in Termux.
 
-### Running the Server
+### Installing in Termux
+
+Copy the built binaries to your Termux environment:
 
 ```bash
-./ananbox-server --help
+# On your development machine
+adb push build/ananbox-server /data/local/tmp/
+adb push build/proot /data/local/tmp/
+
+# In Termux
+cp /data/local/tmp/ananbox-server $PREFIX/bin/
+cp /data/local/tmp/proot $PREFIX/bin/
+chmod +x $PREFIX/bin/ananbox-server $PREFIX/bin/proot
+```
+
+### Running the Server in Termux
+
+```bash
+ananbox-server --help
 
 # Example: Start server on all interfaces, port 5558
-# The proot binary is built alongside the server
-./ananbox-server -a 0.0.0.0 -p 5558 -w 1920 -h 1080 -r /path/to/rootfs -P ./proot
+ananbox-server -a 0.0.0.0 -p 5558 -w 1920 -h 1080 -r ~/rootfs -P proot
 ```
 
 #### Server Options:
@@ -82,7 +105,7 @@ This will build both the `ananbox-server` binary and the `proot` binary needed t
 - `-h, --height <pixels>`: Display height (default: 720)
 - `-d, --dpi <dpi>`: Display DPI (default: 160)
 - `-r, --rootfs <path>`: Path to rootfs directory
-- `-P, --proot <path>`: Path to proot binary (built with the server)
+- `-P, --proot <path>`: Path to proot binary
 - `-v, --verbose`: Enable verbose logging
 
 ### Connecting from the App

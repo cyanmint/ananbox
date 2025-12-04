@@ -78,7 +78,7 @@ void signal_handler(int signum) {
 void print_usage(const char* program) {
     std::cout << "Usage: " << program << " [options]\n"
               << "\n"
-              << "Ananbox standalone server - runs Android containers with network streaming\n"
+              << "Ananbox standalone server for Termux - runs Android containers with network streaming\n"
               << "\n"
               << "Options:\n"
               << "  -a, --address <ip>      Listen address (default: 0.0.0.0)\n"
@@ -86,24 +86,26 @@ void print_usage(const char* program) {
               << "  -w, --width <pixels>    Display width (default: 1280)\n"
               << "  -h, --height <pixels>   Display height (default: 720)\n"
               << "  -d, --dpi <dpi>         Display DPI (default: 160)\n"
-              << "  -r, --rootfs <path>     Path to rootfs directory (default: ./rootfs)\n"
-              << "  -P, --proot <path>      Path to proot binary (default: ./proot)\n"
+              << "  -r, --rootfs <path>     Path to rootfs directory (default: $HOME/rootfs)\n"
+              << "  -P, --proot <path>      Path to proot binary (default: proot in PATH)\n"
               << "  -v, --verbose           Enable verbose logging\n"
               << "  --help                  Show this help message\n"
               << "\n"
-              << "Example:\n"
-              << "  " << program << " -a 0.0.0.0 -p 5558 -w 1920 -h 1080 -r /data/rootfs\n"
+              << "Example (in Termux):\n"
+              << "  " << program << " -a 0.0.0.0 -p 5558 -w 1920 -h 1080 -r ~/rootfs\n"
               << std::endl;
 }
 
 int main(int argc, char* argv[]) {
+    // Default paths suitable for Termux
+    std::string home = getenv("HOME") ? getenv("HOME") : ".";
     std::string listen_address = "0.0.0.0";
     uint16_t listen_port = anbox::server::DEFAULT_PORT;
     int display_width = 1280;
     int display_height = 720;
     int display_dpi = 160;
-    std::string rootfs_path = "./rootfs";
-    std::string proot_path = "./proot";
+    std::string rootfs_path = home + "/rootfs";
+    std::string proot_path = "proot";  // Assume proot is in PATH
     bool verbose = false;
 
     static struct option long_options[] = {
@@ -270,7 +272,7 @@ int main(int argc, char* argv[]) {
 
     // Start the container if proot is available
     std::string run_script = rootfs_path + "/run.sh";
-    if (access(run_script.c_str(), F_OK) == 0 && access(proot_path.c_str(), X_OK) == 0) {
+    if (access(run_script.c_str(), F_OK) == 0) {
         INFO("Starting container...");
         pid_t pid = fork();
         if (pid == 0) {
@@ -279,13 +281,23 @@ int main(int argc, char* argv[]) {
             sigfillset(&signals_to_unblock);
             sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
             
-            std::string cmd = "sh " + run_script + " " + rootfs_path + " " + proot_path;
-            execl("/bin/sh", "sh", "-c", cmd.c_str(), nullptr);
+            // Use execv with proper argument separation to avoid shell injection
+            const char* args[] = {
+                "/system/bin/sh",
+                run_script.c_str(),
+                rootfs_path.c_str(),
+                proot_path.c_str(),
+                nullptr
+            };
+            execv("/system/bin/sh", const_cast<char* const*>(args));
+            // Fallback to /bin/sh if /system/bin/sh doesn't exist
+            args[0] = "/bin/sh";
+            execv("/bin/sh", const_cast<char* const*>(args));
             ERROR("Failed to start container: %s", strerror(errno));
             exit(1);
         }
     } else {
-        WARNING("Container run script or proot not found, running server only");
+        WARNING("Container run script not found at %s, running server only", run_script.c_str());
     }
 
     // Main loop - wait for shutdown
