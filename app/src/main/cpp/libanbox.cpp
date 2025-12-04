@@ -201,8 +201,8 @@ Java_com_github_ananbox_Anbox_initRuntime(
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring proot_) {
-    // Command buffer needs space for: "sh " + path + "/rootfs/run.sh " + path + " " + proot
-    // This requires 3 PATH_MAX-sized strings plus the script command overhead
+    // Command buffer needs space for: 'sh ' + path (255 max) + '/rootfs/run.sh ' + path (255 max) + ' ' + proot (PATH_MAX)
+    // This requires two path (255 bytes max) strings and one PATH_MAX-sized string plus the script command overhead
     static const size_t CMD_PATH_COUNT = 3;  // path, path, proot in the command
     static const size_t CMD_OVERHEAD = 32;   // "sh " + "/rootfs/run.sh " + spaces
     char cmd[PATH_MAX * CMD_PATH_COUNT + CMD_OVERHEAD];
