@@ -49,6 +49,12 @@ class StreamingClient {
         
         // Pixel formats
         private const val PIXEL_FORMAT_RGBA8888 = 1
+        
+        // Maximum payload size to prevent memory exhaustion (100 MB)
+        private const val MAX_PAYLOAD_SIZE = 100 * 1024 * 1024
+        
+        // Maximum reasonable frame dimensions
+        private const val MAX_FRAME_DIMENSION = 8192
     }
     
     interface Listener {
@@ -233,7 +239,7 @@ class StreamingClient {
                 
                 val magic = header.int
                 if (magic != PROTOCOL_MAGIC) {
-                    Log.w(TAG, "Invalid magic: $magic")
+                    Log.w(TAG, "Invalid magic: 0x%08X, expected 0x%08X".format(magic, PROTOCOL_MAGIC))
                     continue
                 }
                 
@@ -241,6 +247,13 @@ class StreamingClient {
                 val type = header.get()
                 val payloadSize = header.int
                 val seq = header.int
+                
+                // Validate payload size to prevent memory exhaustion
+                if (payloadSize < 0 || payloadSize > MAX_PAYLOAD_SIZE) {
+                    Log.w(TAG, "Invalid payload size: $payloadSize, max allowed: $MAX_PAYLOAD_SIZE")
+                    handleDisconnect("Invalid payload size")
+                    break
+                }
                 
                 // Read payload
                 val payload = if (payloadSize > 0) {
@@ -314,7 +327,21 @@ class StreamingClient {
         val timestamp = buffer.long
         val flags = buffer.int
         
-        val pixelDataSize = stride * height
+        // Validate dimensions to prevent integer overflow and memory issues
+        if (width <= 0 || height <= 0 || stride <= 0 ||
+            width > MAX_FRAME_DIMENSION || height > MAX_FRAME_DIMENSION) {
+            Log.w(TAG, "Invalid frame dimensions: ${width}x${height}, stride=$stride")
+            return
+        }
+        
+        // Use Long to check for overflow before creating the byte array
+        val pixelDataSizeLong = stride.toLong() * height.toLong()
+        if (pixelDataSizeLong > MAX_PAYLOAD_SIZE || pixelDataSizeLong > Int.MAX_VALUE) {
+            Log.w(TAG, "Frame pixel data too large: $pixelDataSizeLong")
+            return
+        }
+        
+        val pixelDataSize = pixelDataSizeLong.toInt()
         if (payload.size < 28 + pixelDataSize) {
             Log.w(TAG, "Incomplete frame data")
             return

@@ -16,8 +16,12 @@
 
 #include <cstring>
 #include <chrono>
+#include <stdexcept>
 
 namespace anbox::server {
+
+// Maximum payload size to prevent memory exhaustion (100 MB)
+static constexpr uint32_t MAX_PAYLOAD_SIZE = 100 * 1024 * 1024;
 
 StreamingServer::StreamingServer(const std::shared_ptr<Runtime>& runtime,
                                  const std::string& address,
@@ -31,9 +35,14 @@ StreamingServer::StreamingServer(const std::shared_ptr<Runtime>& runtime,
             on_new_connection(socket);
         });
 
-    boost::asio::ip::address_v4 addr = boost::asio::ip::address_v4::from_string(address);
-    connector_ = std::make_shared<network::TcpSocketConnector>(
-        addr, port, runtime, delegate_connector);
+    try {
+        boost::asio::ip::address_v4 addr = boost::asio::ip::address_v4::from_string(address);
+        connector_ = std::make_shared<network::TcpSocketConnector>(
+            addr, port, runtime, delegate_connector);
+    } catch (const boost::system::system_error& e) {
+        ERROR("Invalid IPv4 address '%s': %s", address.c_str(), e.what());
+        throw;
+    }
     
     INFO("Streaming server initialized on %s:%d", address.c_str(), port);
 }
@@ -105,7 +114,13 @@ void StreamingServer::handle_client_message(int id, const std::vector<uint8_t>& 
     const MessageHeader* header = reinterpret_cast<const MessageHeader*>(data.data());
     
     if (header->magic != PROTOCOL_MAGIC) {
-        WARNING("Invalid magic from client %d", id);
+        WARNING("Invalid magic from client %d: 0x%08X, expected 0x%08X", id, header->magic, PROTOCOL_MAGIC);
+        return;
+    }
+    
+    // Validate payload size to prevent memory exhaustion
+    if (header->payload_size > MAX_PAYLOAD_SIZE) {
+        WARNING("Payload too large from client %d: %u bytes, max: %u", id, header->payload_size, MAX_PAYLOAD_SIZE);
         return;
     }
     

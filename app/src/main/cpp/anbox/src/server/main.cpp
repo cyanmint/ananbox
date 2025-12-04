@@ -299,7 +299,9 @@ int main(int argc, char* argv[]) {
     if (access(run_script.c_str(), F_OK) == 0) {
         INFO("Starting container...");
         pid_t pid = fork();
-        if (pid == 0) {
+        if (pid < 0) {
+            ERROR("fork() failed: %s", strerror(errno));
+        } else if (pid == 0) {
             // Child process
             sigset_t signals_to_unblock;
             sigfillset(&signals_to_unblock);
@@ -319,6 +321,9 @@ int main(int argc, char* argv[]) {
             execv("/bin/sh", const_cast<char* const*>(args));
             ERROR("Failed to start container: %s", strerror(errno));
             exit(1);
+        } else {
+            // Parent process - store child PID for potential cleanup
+            INFO("Container process started with PID %d", pid);
         }
     } else {
         WARNING("Container run script not found at %s, running server only", run_script.c_str());

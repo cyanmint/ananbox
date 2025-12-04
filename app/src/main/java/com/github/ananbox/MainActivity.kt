@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private var remoteAddress = ""
     private var remotePort = 5558
     private var streamingClient: StreamingClient? = null
+    @Volatile
     private var currentBitmap: Bitmap? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     
@@ -176,7 +177,8 @@ class MainActivity : AppCompatActivity() {
     private val remoteTouchListener = View.OnTouchListener { v, event ->
         val client = streamingClient ?: return@OnTouchListener true
         
-        val action = when (event.action and MotionEvent.ACTION_MASK) {
+        val maskedAction = event.action and MotionEvent.ACTION_MASK
+        val action = when (maskedAction) {
             MotionEvent.ACTION_DOWN -> 0
             MotionEvent.ACTION_UP -> 1
             MotionEvent.ACTION_MOVE -> 2
@@ -191,7 +193,7 @@ class MainActivity : AppCompatActivity() {
             val x = event.getX(i).toInt()
             val y = event.getY(i).toInt()
             
-            if (event.action == MotionEvent.ACTION_MOVE) {
+            if (maskedAction == MotionEvent.ACTION_MOVE) {
                 client.sendTouchEvent(x, y, pointerId, 2)
             } else if (i == event.actionIndex) {
                 client.sendTouchEvent(x, y, pointerId, action)
