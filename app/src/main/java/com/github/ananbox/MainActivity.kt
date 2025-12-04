@@ -132,7 +132,7 @@ class MainActivity : AppCompatActivity() {
                 val basePath = filesDir.absolutePath
                 
                 // Use nativeLibraryDir for PROOT_TMP_DIR since it's mounted with exec permission
-                // The app's filesDir is mounted with noexec, preventing proot's loader from running
+                // The app's filesDir is mounted with noexec, preventing proot's loader from being executed
                 val prootTmpDir = applicationInfo.nativeLibraryDir
                 
                 val command = mutableListOf(
