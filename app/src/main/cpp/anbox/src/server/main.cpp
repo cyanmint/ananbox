@@ -487,6 +487,21 @@ int main(int argc, char* argv[]) {
     }
 
     INFO("Server is running. Press Ctrl+C to stop.");
+    
+    // If EGL failed, we need to send test frames to show the streaming works
+    // The container's OpenGL commands won't work without EGL
+    bool send_test_frames = !egl_initialized;
+    if (send_test_frames) {
+        INFO("EGL not available - sending test pattern frames to verify streaming");
+        INFO("Note: Container graphics require EGL/swiftshader to work in headless mode");
+    }
+    
+    // Test frame buffer for when EGL is not available
+    std::vector<uint8_t> test_frame;
+    int test_frame_counter = 0;
+    if (send_test_frames) {
+        test_frame.resize(display_width * display_height * 4);
+    }
 
     // Main loop - wait for shutdown or child exit
     while (running) {
@@ -507,8 +522,38 @@ int main(int argc, char* argv[]) {
             }
         }
         
-        // Let the runtime process I/O events
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Send test frames when EGL is not available and clients are connected
+        if (send_test_frames && streaming_server->has_clients()) {
+            test_frame_counter++;
+            
+            // Generate a simple animated test pattern
+            for (uint32_t y = 0; y < display_height; y++) {
+                for (uint32_t x = 0; x < display_width; x++) {
+                    size_t offset = (y * display_width + x) * 4;
+                    // Create a gradient with animation
+                    test_frame[offset + 0] = static_cast<uint8_t>((x + test_frame_counter) % 256); // R
+                    test_frame[offset + 1] = static_cast<uint8_t>((y + test_frame_counter) % 256); // G
+                    test_frame[offset + 2] = static_cast<uint8_t>(((x + y) / 2 + test_frame_counter * 2) % 256); // B
+                    test_frame[offset + 3] = 255; // A
+                }
+            }
+            
+            // Send the test frame
+            streaming_server->send_frame(test_frame.data(), display_width, display_height,
+                                         anbox::server::PIXEL_FORMAT_RGBA8888, 
+                                         display_width * 4);
+            
+            // Log periodically
+            if (test_frame_counter % 100 == 1) {
+                INFO("Sent test frame %d to clients", test_frame_counter);
+            }
+            
+            // Limit frame rate to ~30 FPS
+            std::this_thread::sleep_for(std::chrono::milliseconds(33));
+        } else {
+            // Let the runtime process I/O events
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
     }
 
     // Cleanup
