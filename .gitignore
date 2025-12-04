@@ -15,3 +15,7 @@
 local.properties
 app/src/main/cpp/build-*/
 _codeql_detected_source_root
+# Proot build artifacts
+app/src/main/cpp/proot/src/build.h
+app/src/main/cpp/proot/src/*.o
+app/src/main/cpp/proot/src/proot
