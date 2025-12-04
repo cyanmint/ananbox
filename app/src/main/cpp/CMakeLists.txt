@@ -67,19 +67,35 @@ set(SERVER_SOURCES
     ${CMAKE_SOURCE_DIR}/anbox/src/server/adb_forwarder.cpp
 )
 
-# Build libanbox.so as a shared library that can also be executed as a standalone server
-# This is similar to how busybox works - one binary with multiple functions
+# Build libanbox.so as a Position Independent Executable (PIE) that can be:
+# 1. Loaded as a shared library by the Android app (JNI)
+# 2. Executed directly as a standalone server (Termux/local server mode)
+# 
+# This is achieved by building as executable with -pie and exporting dynamic symbols
 if(ANDROID)
-    # Build as shared library with PIE support for execution
-    add_library(anbox SHARED
+    find_library(log-lib log)
+    
+    # Build as an executable that looks like a shared library
+    add_executable(anbox
         libanbox.cpp
         ${SERVER_SOURCES}
     )
     
-    # Add execute permission by setting proper flags
-    # The -pie flag allows it to be executed directly
+    # Make it look like a shared library so it gets packaged in APK
     set_target_properties(anbox PROPERTIES
+        OUTPUT_NAME "anbox"
+        PREFIX "lib"
+        SUFFIX ".so"
+        # Enable PIE for security and to allow execution
         POSITION_INDEPENDENT_CODE ON
+    )
+    
+    # Export all symbols so it can be loaded as a shared library for JNI
+    # -rdynamic exports all symbols to the dynamic symbol table
+    target_link_options(anbox PRIVATE
+        -pie
+        -rdynamic
+        -Wl,--export-dynamic
     )
     
     target_include_directories(anbox PRIVATE
@@ -87,8 +103,6 @@ if(ANDROID)
         ${CMAKE_SOURCE_DIR}/anbox/src
         ${CMAKE_SOURCE_DIR}/anbox/src/anbox
     )
-    
-    find_library(log-lib log)
     
     target_link_libraries(anbox
         anbox-core
