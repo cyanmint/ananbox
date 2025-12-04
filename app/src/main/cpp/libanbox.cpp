@@ -201,7 +201,8 @@ Java_com_github_ananbox_Anbox_initRuntime(
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring proot_) {
-    char cmd[255];
+    // Use PATH_MAX for the command buffer to handle long paths safely
+    char cmd[PATH_MAX * 3 + 64];  // space for path + path + proot + script path + separators
     if (fork() != 0) {
         return;
     }
@@ -236,7 +237,8 @@ Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     // The app's filesDir is mounted with noexec flag on modern Android
     setenv("PROOT_TMP_DIR", native_lib_dir, 1);
     
-    sprintf(cmd, "sh %s/rootfs/run.sh %s %s", path, path, proot);
+    // Use snprintf for safe command string construction
+    snprintf(cmd, sizeof(cmd), "sh %s/rootfs/run.sh %s %s", path, path, proot);
     env->ReleaseStringUTFChars(proot_, proot);
     execl("/system/bin/sh", "sh", "-c", cmd, 0);
     __android_log_print(ANDROID_LOG_ERROR, TAG, "proot excuted failed: %s", strerror(errno));
