@@ -224,12 +224,13 @@ class MainActivity : AppCompatActivity() {
                                 false  // Allow absolute symlinks as proot handles them
                             } else {
                                 // For relative symlinks, check if resolving them escapes rootfs
-                                var currentPath = destFile.parentFile
+                                var currentPath: File? = destFile.parentFile
                                 for (component in linkTarget.split("/")) {
+                                    if (currentPath == null) break // Exit early if path becomes null
                                     when (component) {
-                                        ".." -> currentPath = currentPath?.parentFile
+                                        ".." -> currentPath = currentPath.parentFile
                                         ".", "" -> { /* ignore */ }
-                                        else -> currentPath = currentPath?.let { File(it, component) }
+                                        else -> currentPath = File(currentPath, component)
                                     }
                                 }
                                 currentPath?.let { 
@@ -241,10 +242,8 @@ class MainActivity : AppCompatActivity() {
                                 Log.w(TAG, "Skipping unsafe symlink: ${destFile.path} -> $linkTarget")
                             } else {
                                 try {
-                                    // Delete existing file/symlink if it exists
-                                    if (destFile.exists() || java.nio.file.Files.isSymbolicLink(destFile.toPath())) {
-                                        destFile.delete()
-                                    }
+                                    // Delete existing file/symlink if it exists using Files.deleteIfExists for reliability
+                                    java.nio.file.Files.deleteIfExists(destFile.toPath())
                                     java.nio.file.Files.createSymbolicLink(
                                         destFile.toPath(),
                                         java.nio.file.Paths.get(linkTarget)
