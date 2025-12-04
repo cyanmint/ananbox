@@ -201,8 +201,11 @@ Java_com_github_ananbox_Anbox_initRuntime(
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring proot_) {
-    // Use PATH_MAX for the command buffer to handle long paths safely
-    char cmd[PATH_MAX * 3 + 64];  // space for path + path + proot + script path + separators
+    // Command buffer needs space for: "sh " + path + "/rootfs/run.sh " + path + " " + proot
+    // This requires 3 PATH_MAX-sized strings plus the script command overhead
+    static const size_t CMD_PATH_COUNT = 3;  // path, path, proot in the command
+    static const size_t CMD_OVERHEAD = 32;   // "sh " + "/rootfs/run.sh " + spaces
+    char cmd[PATH_MAX * CMD_PATH_COUNT + CMD_OVERHEAD];
     if (fork() != 0) {
         return;
     }
@@ -241,7 +244,7 @@ Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     snprintf(cmd, sizeof(cmd), "sh %s/rootfs/run.sh %s %s", path, path, proot);
     env->ReleaseStringUTFChars(proot_, proot);
     execl("/system/bin/sh", "sh", "-c", cmd, 0);
-    __android_log_print(ANDROID_LOG_ERROR, TAG, "proot excuted failed: %s", strerror(errno));
+    __android_log_print(ANDROID_LOG_ERROR, TAG, "proot executed failed: %s", strerror(errno));
  }
 extern "C"
 JNIEXPORT void JNICALL
