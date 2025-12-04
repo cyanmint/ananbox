@@ -215,8 +215,17 @@ Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     // proot path is like "/data/app/.../lib/arm64/libproot.so"
     // We want the directory part which is executable (unlike filesDir/tmp which has noexec)
     char native_lib_dir[PATH_MAX];
-    strncpy(native_lib_dir, proot, PATH_MAX - 1);
-    native_lib_dir[PATH_MAX - 1] = '\0';
+    size_t proot_len = strlen(proot);
+    
+    // Validate the path length to prevent buffer overflow
+    if (proot_len >= PATH_MAX) {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "proot path too long");
+        env->ReleaseStringUTFChars(proot_, proot);
+        _exit(1);
+    }
+    
+    // Use snprintf for safe string copying
+    snprintf(native_lib_dir, sizeof(native_lib_dir), "%s", proot);
     char *last_slash = strrchr(native_lib_dir, '/');
     if (last_slash != nullptr) {
         *last_slash = '\0';  // Remove the filename, keep directory
