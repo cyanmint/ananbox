@@ -165,6 +165,30 @@ int main(int argc, char* argv[]) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
+    // Validate paths to prevent path traversal attacks
+    auto validate_path = [](const std::string& path, const std::string& name) -> bool {
+        // Check for null bytes
+        if (path.find('\0') != std::string::npos) {
+            ERROR("Invalid %s path: contains null byte", name.c_str());
+            return false;
+        }
+        // Check for path traversal attempts
+        if (path.find("..") != std::string::npos) {
+            ERROR("Invalid %s path: contains '..'", name.c_str());
+            return false;
+        }
+        // Path should not be empty
+        if (path.empty()) {
+            ERROR("Invalid %s path: empty", name.c_str());
+            return false;
+        }
+        return true;
+    };
+    
+    if (!validate_path(rootfs_path, "rootfs") || !validate_path(proot_path, "proot")) {
+        return 1;
+    }
+
     INFO("Ananbox Server starting...");
     INFO("  Listen: %s:%d", listen_address.c_str(), listen_port);
     INFO("  Display: %dx%d @ %d DPI", display_width, display_height, display_dpi);
