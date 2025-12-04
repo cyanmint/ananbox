@@ -12,7 +12,8 @@ if(BUILD_ANANBOX_SERVER)
     endif()
     
     # Build proot for Termux
-    include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/ProotTermux.cmake)
+    # Path: from anbox/src/server/ go up 3 levels to app/src/main/cpp/, then into cmake/
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/ProotTermux.cmake)
 
     set(SERVER_SOURCES
         server/streaming_protocol.h
