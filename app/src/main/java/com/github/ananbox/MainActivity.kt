@@ -42,9 +42,9 @@ class MainActivity : AppCompatActivity() {
             Log.i(TAG, "Runtime initializing..")
             if(Anbox.initRuntime(mSurfaceView.width, mSurfaceView.height, dpi)) {
                 Anbox.createSurface(surface)
-                Anbox.startRuntime()
-                // Create required directories before starting container
+                // Create required directories before starting runtime
                 ensureRequiredDirectories()
+                Anbox.startRuntime()
                 Anbox.startContainer(applicationContext.applicationInfo.nativeLibraryDir + "/libproot.so")
             }
             else {
