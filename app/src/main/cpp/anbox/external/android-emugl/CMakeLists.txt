@@ -1,7 +1,8 @@
 # Don't treat any warnings as error as we take the source directly from
 # upstream and just compile it.
-set(CMAKE_C_FLAGS "-Wall")
-set(CMAKE_CXX_FLAGS "-std=c++11 -Wall")
+# Suppress all warnings for third-party code
+set(CMAKE_C_FLAGS "-w")
+set(CMAKE_CXX_FLAGS "-std=c++11 -w")
 
 # Ensure -fPIC
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)

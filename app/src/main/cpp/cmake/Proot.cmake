@@ -1,8 +1,9 @@
 include(ExternalProject)
 include(Talloc)
 include(Unwind)
-set(PROOT_SRC ${CMAKE_CURRENT_BINARY_DIR}/proot-prefix/src/proot/src)
-set(PROOT_BIN ${CMAKE_CURRENT_BINARY_DIR}/proot-prefix/src/proot-build)
+set(PROOT_VENDOR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/proot)
+set(PROOT_SRC ${PROOT_VENDOR_DIR}/src)
+set(PROOT_BIN ${CMAKE_CURRENT_BINARY_DIR}/proot-build)
 set(PROOT_C_FLAGS "-I${TALLOC_INCLUDE_DIRS} -I${PROOT_SRC} -D_GNU_SOURCE -I${UNWIND_INCLUDE_DIRS} -w")
 set(PROOT_LINKER_FLAGS "-L${TALLOC_BIN}/lib -L${CMAKE_BINARY_DIR} -ltalloc -lunwind_ptrace")
 # Get API level from ANDROID_PLATFORM (format: android-XX) or fall back to 24
@@ -19,11 +20,10 @@ else()
 endif()
 ExternalProject_Add(
         proot
-        GIT_REPOSITORY https://github.com/Ananbox/proot.git
-        GIT_TAG a8189b1e6fb892104fdc01a939c7e75e9325a3c0
-        GIT_SHALLOW 1
+        SOURCE_DIR ${PROOT_VENDOR_DIR}
         CONFIGURE_COMMAND cd ${PROOT_SRC} && make clean
-        BUILD_COMMAND cd ${PROOT_SRC} && make CC=${PROOT_C_COMPILER} LD=${PROOT_C_COMPILER} STRIP=${CMAKE_STRIP} OBJCOPY=${CMAKE_OBJCOPY} OBJDUMP=${CMAKE_OBJDUMP} CFLAGS=${PROOT_C_FLAGS} LDFLAGS=${PROOT_LINKER_FLAGS}
+        BUILD_COMMAND cd ${PROOT_SRC} && make CC=${PROOT_C_COMPILER} LD=${PROOT_C_COMPILER} STRIP=${CMAKE_STRIP} OBJCOPY=${CMAKE_OBJCOPY} OBJDUMP=${CMAKE_OBJDUMP} CFLAGS=${PROOT_C_FLAGS} LDFLAGS=${PROOT_LINKER_FLAGS} HAS_SWIG= HAS_PYTHON_CONFIG=
+        BUILD_IN_SOURCE 1
         # hacked: only lib*.so can be packed into apk
         INSTALL_COMMAND cd ${PROOT_SRC} && cp -f ./proot ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libproot.so
         DEPENDS talloc unwind_ptrace
