@@ -46,9 +46,9 @@ class LayerComposer {
   LayerComposer(const std::shared_ptr<Renderer> renderer,
                 std::shared_ptr<graphics::Rect> rect,
                 EGLNativeWindowType native_window);
-  ~LayerComposer();
+  virtual ~LayerComposer();
 
-  void submit_layers(const RenderableList &renderables);
+  virtual void submit_layers(const RenderableList &renderables);
 
  private:
   std::shared_ptr<Renderer> renderer_;

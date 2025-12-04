@@ -26,6 +26,7 @@ project("ananbox")
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 include(Boost)
 option(BUILD_ANANBOX_DEMO "" off)
+option(BUILD_ANANBOX_SERVER "Build the standalone Ananbox server for Termux" OFF)
 find_package(Boost COMPONENTS filesystem log_setup log serialization system thread program_options)
 
 add_subdirectory(anbox)
@@ -89,3 +90,40 @@ target_link_libraries( # Specifies the target library.
         # Links the target library to the log library
         # included in the NDK.
         ${log-lib})
+
+# Build standalone server for Termux (must be after Proot is included)
+if(BUILD_ANANBOX_SERVER AND ANDROID)
+    set(SERVER_SOURCES
+        ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_server.cpp
+        ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_layer_composer.cpp
+        ${CMAKE_SOURCE_DIR}/anbox/src/server/software_color_buffer.cpp
+        ${CMAKE_SOURCE_DIR}/anbox/src/server/main.cpp
+    )
+
+    add_executable(ananbox-server ${SERVER_SOURCES})
+    
+    target_compile_definitions(ananbox-server PRIVATE ANANBOX_SERVER)
+    
+    target_include_directories(ananbox-server PRIVATE
+        ${CMAKE_SOURCE_DIR}/anbox/src/server
+        ${CMAKE_SOURCE_DIR}/anbox/src
+        ${CMAKE_SOURCE_DIR}/anbox/src/anbox
+        ${CMAKE_SOURCE_DIR}/anbox/external/android-emugl/shared
+        ${Boost_INCLUDE_DIRS}
+    )
+    
+    target_link_libraries(ananbox-server
+        anbox-core
+        ${Boost_LIBRARIES}
+        log
+        android
+        EGL
+        GLESv2
+    )
+    
+    # Note: proot is built separately by the main Android app build via Gradle
+    # The server binary can be used with the libproot.so from the APK
+
+    # Install the server binary
+    install(TARGETS ananbox-server DESTINATION bin)
+endif()

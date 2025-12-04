@@ -377,3 +377,5 @@ target_link_libraries(ananbox
     anbox-core)
 add_backward(ananbox)
 endif()
+
+# Server build is handled in the main CMakeLists.txt after Proot is included

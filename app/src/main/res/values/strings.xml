@@ -24,4 +24,27 @@
     <string name="rom_installer_extracting_title">Extracting</string>
     <string name="rom_installer_extracting_msg">Extracting rom file..</string>
     <string name="cancel">Cancel</string>
+    
+    <!-- Remote Server Settings -->
+    <string name="settings_remote_category">Remote Server</string>
+    <string name="settings_remote_enabled_key">remote_enabled</string>
+    <string name="settings_remote_enabled_title">Connect to Remote Server</string>
+    <string name="settings_remote_enabled_summary">Stream graphics/audio/input from a remote Ananbox server instead of running locally</string>
+    <string name="settings_remote_address_key">remote_address</string>
+    <string name="settings_remote_address_title">Server Address</string>
+    <string name="settings_remote_address_summary">IP address of the remote Ananbox server</string>
+    <string name="settings_remote_address_default">192.168.1.100</string>
+    <string name="settings_remote_port_key">remote_port</string>
+    <string name="settings_remote_port_title">Server Port</string>
+    <string name="settings_remote_port_summary">Port number of the remote server (default: 5558)</string>
+    <string name="settings_remote_port_default">5558</string>
+    <string name="settings_remote_connect_key">remote_connect</string>
+    <string name="settings_remote_connect_title">Connect Now</string>
+    <string name="settings_remote_connect_summary">Connect to the configured remote server</string>
+    
+    <!-- Connection Status -->
+    <string name="remote_connecting">Connecting to %1$s:%2$s…</string>
+    <string name="remote_connected">Connected to remote server</string>
+    <string name="remote_disconnected">Disconnected from server</string>
+    <string name="remote_connection_failed">Failed to connect: %1$s</string>
 </resources>

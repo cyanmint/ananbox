@@ -7,11 +7,18 @@ import android.app.ProgressDialog
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
+import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.View
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -31,24 +38,22 @@ class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
     private val READ_REQUEST_CODE = 2
     private lateinit var mSurfaceView: SurfaceView
+    private var isRemoteMode = false
+    private var remoteAddress = ""
+    private var remotePort = 5558
+    private var streamingClient: StreamingClient? = null
+    @Volatile
+    private var currentBitmap: Bitmap? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    
     private val mSurfaceCallback: SurfaceHolder.Callback = object : SurfaceHolder.Callback {
         override fun surfaceCreated(holder: SurfaceHolder) {
-            val surface = holder.surface
-            val windowManager = windowManager
-            val defaultDisplay = windowManager.defaultDisplay
-            val displayMetrics = DisplayMetrics()
-            defaultDisplay.getRealMetrics(displayMetrics)
-            val dpi = displayMetrics.densityDpi
-            Log.i(TAG, "Runtime initializing..")
-            if(Anbox.initRuntime(mSurfaceView.width, mSurfaceView.height, dpi)) {
-                Anbox.createSurface(surface)
-                // Create required directories before starting runtime
-                ensureRequiredDirectories()
-                Anbox.startRuntime()
-                Anbox.startContainer(applicationContext.applicationInfo.nativeLibraryDir + "/libproot.so")
-            }
-            else {
-                Anbox.createSurface(surface)
+            if (isRemoteMode) {
+                // Remote mode: connect to streaming server
+                connectToRemoteServer(holder)
+            } else {
+                // Local mode: start local container
+                startLocalContainer(holder)
             }
         }
 
@@ -60,10 +65,142 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun surfaceDestroyed(holder: SurfaceHolder) {
-//            Renderer.removeWindow(holder.surface)
-            Anbox.destroySurface()
+            if (isRemoteMode) {
+                streamingClient?.disconnect()
+            } else {
+                Anbox.destroySurface()
+            }
             Log.i(TAG, "surfaceDestroyed!")
         }
+    }
+    
+    private fun startLocalContainer(holder: SurfaceHolder) {
+        val surface = holder.surface
+        val windowManager = windowManager
+        val defaultDisplay = windowManager.defaultDisplay
+        val displayMetrics = DisplayMetrics()
+        defaultDisplay.getRealMetrics(displayMetrics)
+        val dpi = displayMetrics.densityDpi
+        Log.i(TAG, "Runtime initializing..")
+        if(Anbox.initRuntime(mSurfaceView.width, mSurfaceView.height, dpi)) {
+            Anbox.createSurface(surface)
+            // Create required directories before starting runtime
+            ensureRequiredDirectories()
+            Anbox.startRuntime()
+            Anbox.startContainer(applicationContext.applicationInfo.nativeLibraryDir + "/libproot.so")
+        }
+        else {
+            Anbox.createSurface(surface)
+        }
+    }
+    
+    private fun connectToRemoteServer(holder: SurfaceHolder) {
+        Log.i(TAG, "Connecting to remote server: $remoteAddress:$remotePort")
+        
+        val displayMetrics = DisplayMetrics()
+        windowManager.defaultDisplay.getRealMetrics(displayMetrics)
+        val dpi = displayMetrics.densityDpi
+        
+        streamingClient = StreamingClient()
+        streamingClient?.setListener(object : StreamingClient.Listener {
+            override fun onConnected(width: Int, height: Int, dpi: Int) {
+                mainHandler.post {
+                    Toast.makeText(this@MainActivity, 
+                        getString(R.string.remote_connected), 
+                        Toast.LENGTH_SHORT).show()
+                }
+            }
+            
+            override fun onDisconnected(reason: String?) {
+                mainHandler.post {
+                    Toast.makeText(this@MainActivity, 
+                        getString(R.string.remote_disconnected), 
+                        Toast.LENGTH_SHORT).show()
+                }
+            }
+            
+            override fun onFrame(bitmap: Bitmap) {
+                currentBitmap = bitmap
+                mainHandler.post {
+                    drawBitmapToSurface(holder, bitmap)
+                }
+            }
+            
+            override fun onAudioData(data: ByteArray, sampleRate: Int, channels: Int, bitsPerSample: Int) {
+                // TODO: Play audio data
+            }
+            
+            override fun onDisplayConfigChanged(width: Int, height: Int, dpi: Int) {
+                Log.i(TAG, "Display config changed: ${width}x${height}@${dpi}dpi")
+            }
+            
+            override fun onError(error: String) {
+                mainHandler.post {
+                    Toast.makeText(this@MainActivity, 
+                        getString(R.string.remote_connection_failed, error), 
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+        })
+        
+        thread {
+            val connected = streamingClient?.connect(
+                remoteAddress, 
+                remotePort, 
+                mSurfaceView.width, 
+                mSurfaceView.height, 
+                dpi
+            ) ?: false
+            
+            if (!connected) {
+                mainHandler.post {
+                    Toast.makeText(this@MainActivity, 
+                        getString(R.string.remote_connection_failed, "Connection failed"), 
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
+    private fun drawBitmapToSurface(holder: SurfaceHolder, bitmap: Bitmap) {
+        try {
+            val canvas: Canvas? = holder.lockCanvas()
+            canvas?.let {
+                it.drawBitmap(bitmap, 0f, 0f, null)
+                holder.unlockCanvasAndPost(it)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to draw frame: ${e.message}")
+        }
+    }
+    
+    private val remoteTouchListener = View.OnTouchListener { v, event ->
+        val client = streamingClient ?: return@OnTouchListener true
+        
+        val maskedAction = event.action and MotionEvent.ACTION_MASK
+        val action = when (maskedAction) {
+            MotionEvent.ACTION_DOWN -> 0
+            MotionEvent.ACTION_UP -> 1
+            MotionEvent.ACTION_MOVE -> 2
+            MotionEvent.ACTION_POINTER_DOWN -> 0
+            MotionEvent.ACTION_POINTER_UP -> 1
+            else -> return@OnTouchListener true
+        }
+        
+        // Handle multi-touch
+        for (i in 0 until event.pointerCount) {
+            val pointerId = event.getPointerId(i)
+            val x = event.getX(i).toInt()
+            val y = event.getY(i).toInt()
+            
+            if (maskedAction == MotionEvent.ACTION_MOVE) {
+                client.sendTouchEvent(x, y, pointerId, 2)
+            } else if (i == event.actionIndex) {
+                client.sendTouchEvent(x, y, pointerId, action)
+            }
+        }
+        
+        true
     }
 
     private lateinit var binding: ActivityMainBinding
@@ -79,8 +216,22 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
-        if (!File(filesDir, "rootfs").exists()) {
+        
+        // Check if we should connect to remote server
+        isRemoteMode = intent.getBooleanExtra("remote_mode", false) || 
+                       SettingsActivity.isRemoteModeEnabled(this)
+        
+        if (isRemoteMode) {
+            remoteAddress = intent.getStringExtra("remote_address") 
+                ?: SettingsActivity.getRemoteAddress(this)
+            remotePort = intent.getIntExtra("remote_port", 
+                SettingsActivity.getRemotePort(this))
+            
+            Log.i(TAG, "Remote mode enabled: $remoteAddress:$remotePort")
+        }
+        
+        // For local mode, check if rootfs exists
+        if (!isRemoteMode && !File(filesDir, "rootfs").exists()) {
             AlertDialog.Builder(this)
                 .apply {
                     setTitle(getString(R.string.rom_installer_title))
@@ -110,14 +261,21 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        Anbox.setPath(filesDir.path)
+        if (!isRemoteMode) {
+            Anbox.setPath(filesDir.path)
+        }
 
         mSurfaceView = SurfaceView(this)
         mSurfaceView.getHolder().addCallback(mSurfaceCallback)
         binding.root.addView(mSurfaceView, 0)
 
-        // put in onResume?
-        mSurfaceView.setOnTouchListener(Anbox)
+        // Set touch listener based on mode
+        if (isRemoteMode) {
+            mSurfaceView.setOnTouchListener(remoteTouchListener)
+        } else {
+            mSurfaceView.setOnTouchListener(Anbox)
+        }
+        
         binding.fab.setOnClickListener {
             startActivity(Intent(applicationContext, SettingsActivity::class.java))
         }
@@ -132,7 +290,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        Anbox.stopRuntime()
+        if (isRemoteMode) {
+            streamingClient?.disconnect()
+        } else {
+            Anbox.stopRuntime()
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
