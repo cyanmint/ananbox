@@ -112,85 +112,116 @@ void StreamingServer::on_new_connection(
 }
 
 void StreamingServer::handle_client_message(int id, const std::vector<uint8_t>& data) {
-    if (data.size() < sizeof(MessageHeader)) {
-        WARNING("Invalid message from client %d: too small", id);
-        return;
-    }
+    // Append incoming data to the client's buffer
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto& buffer = client_buffers_[id];
+    buffer.insert(buffer.end(), data.begin(), data.end());
     
-    const MessageHeader* header = reinterpret_cast<const MessageHeader*>(data.data());
-    
-    if (header->magic != PROTOCOL_MAGIC) {
-        WARNING("Invalid magic from client %d: 0x%08X, expected 0x%08X", id, header->magic, PROTOCOL_MAGIC);
-        return;
-    }
-    
-    // Validate payload size to prevent memory exhaustion
-    if (header->payload_size > MAX_PAYLOAD_SIZE) {
-        WARNING("Payload too large from client %d: %u bytes, max: %u", id, header->payload_size, MAX_PAYLOAD_SIZE);
-        return;
-    }
-    
-    if (data.size() < sizeof(MessageHeader) + header->payload_size) {
-        WARNING("Incomplete message from client %d", id);
-        return;
-    }
-    
-    const uint8_t* payload = data.data() + sizeof(MessageHeader);
-    
-    switch (header->type) {
-        case MessageType::HANDSHAKE_REQUEST: {
-            if (header->payload_size >= sizeof(HandshakeRequest)) {
-                const HandshakeRequest* req = reinterpret_cast<const HandshakeRequest*>(payload);
-                INFO("Client %d handshake: version=%d, display=%dx%d@%ddpi",
-                     id, req->client_version, req->display_width, req->display_height, req->display_dpi);
-            }
-            break;
-        }
+    // Process complete messages from the buffer
+    while (buffer.size() >= sizeof(MessageHeader)) {
+        const MessageHeader* header = reinterpret_cast<const MessageHeader*>(buffer.data());
         
-        case MessageType::TOUCH_EVENT: {
-            if (header->payload_size >= sizeof(TouchEvent) && input_callback_) {
-                const TouchEvent* event = reinterpret_cast<const TouchEvent*>(payload);
-                input_callback_(*event);
-            }
-            break;
-        }
-        
-        case MessageType::KEY_EVENT: {
-            if (header->payload_size >= sizeof(KeyEvent) && key_callback_) {
-                const KeyEvent* event = reinterpret_cast<const KeyEvent*>(payload);
-                key_callback_(*event);
-            }
-            break;
-        }
-        
-        case MessageType::PING: {
-            // Respond with PONG
-            MessageHeader pong;
-            pong.magic = PROTOCOL_MAGIC;
-            pong.version = PROTOCOL_VERSION;
-            pong.type = MessageType::PONG;
-            pong.payload_size = 0;
-            pong.sequence = sequence_++;
-            
-            for (unsigned n = 0; n < connections_->size(); n++) {
-                auto conn = connections_->at(n);
-                if (conn && conn->id() == id) {
-                    conn->send(reinterpret_cast<const char*>(&pong), sizeof(pong));
+        if (header->magic != PROTOCOL_MAGIC) {
+            // Invalid magic - try to find the magic number in the buffer
+            bool found = false;
+            for (size_t i = 1; i <= buffer.size() - 4; i++) {
+                uint32_t magic = *reinterpret_cast<const uint32_t*>(buffer.data() + i);
+                if (magic == PROTOCOL_MAGIC) {
+                    // Found magic, skip invalid bytes
+                    buffer.erase(buffer.begin(), buffer.begin() + i);
+                    found = true;
                     break;
                 }
             }
-            break;
+            if (!found) {
+                // No valid magic found, keep only last 3 bytes (might be partial magic)
+                if (buffer.size() > 3) {
+                    buffer.erase(buffer.begin(), buffer.end() - 3);
+                }
+                return;
+            }
+            continue;
         }
         
-        case MessageType::DISCONNECT: {
-            INFO("Client %d disconnecting", id);
-            // Connection will be removed when it closes
-            break;
+        // Validate payload size to prevent memory exhaustion
+        if (header->payload_size > MAX_PAYLOAD_SIZE) {
+            WARNING("Payload too large from client %d: %u bytes, max: %u", id, header->payload_size, MAX_PAYLOAD_SIZE);
+            // Skip this message by finding next magic
+            buffer.erase(buffer.begin(), buffer.begin() + 4);
+            continue;
         }
         
-        default:
-            DEBUG("Unknown message type from client %d: %d", id, static_cast<int>(header->type));
-            break;
+        size_t total_size = sizeof(MessageHeader) + header->payload_size;
+        if (buffer.size() < total_size) {
+            // Incomplete message, wait for more data
+            return;
+        }
+        
+        // Copy the message data before processing (so we can safely erase from buffer)
+        MessageType msg_type = header->type;
+        uint32_t payload_size = header->payload_size;
+        std::vector<uint8_t> payload_copy(buffer.begin() + sizeof(MessageHeader),
+                                          buffer.begin() + total_size);
+        const uint8_t* payload = payload_copy.data();
+        
+        // Remove processed message from buffer
+        buffer.erase(buffer.begin(), buffer.begin() + total_size);
+        
+        switch (msg_type) {
+            case MessageType::HANDSHAKE_REQUEST: {
+                if (payload_size >= sizeof(HandshakeRequest)) {
+                    const HandshakeRequest* req = reinterpret_cast<const HandshakeRequest*>(payload);
+                    INFO("Client %d handshake: version=%d, display=%dx%d@%ddpi",
+                         id, req->client_version, req->display_width, req->display_height, req->display_dpi);
+                }
+                break;
+            }
+            
+            case MessageType::TOUCH_EVENT: {
+                if (payload_size >= sizeof(TouchEvent) && input_callback_) {
+                    const TouchEvent* event = reinterpret_cast<const TouchEvent*>(payload);
+                    input_callback_(*event);
+                }
+                break;
+            }
+            
+            case MessageType::KEY_EVENT: {
+                if (payload_size >= sizeof(KeyEvent) && key_callback_) {
+                    const KeyEvent* event = reinterpret_cast<const KeyEvent*>(payload);
+                    key_callback_(*event);
+                }
+                break;
+            }
+            
+            case MessageType::PING: {
+                // Respond with PONG
+                MessageHeader pong;
+                pong.magic = PROTOCOL_MAGIC;
+                pong.version = PROTOCOL_VERSION;
+                pong.type = MessageType::PONG;
+                pong.payload_size = 0;
+                pong.sequence = sequence_++;
+                
+                for (unsigned n = 0; n < connections_->size(); n++) {
+                    auto conn = connections_->at(n);
+                    if (conn && conn->id() == id) {
+                        conn->send(reinterpret_cast<const char*>(&pong), sizeof(pong));
+                        break;
+                    }
+                }
+                break;
+            }
+            
+            case MessageType::DISCONNECT: {
+                INFO("Client %d disconnecting", id);
+                // Connection will be removed when it closes
+                break;
+            }
+            
+            default:
+                DEBUG("Unknown message type from client %d: %d", id, static_cast<int>(msg_type));
+                break;
+        }
     }
 }
 

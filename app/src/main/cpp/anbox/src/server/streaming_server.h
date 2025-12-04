@@ -23,6 +23,8 @@
 #include <mutex>
 #include <atomic>
 #include <functional>
+#include <map>
+#include <vector>
 
 namespace anbox::server {
 
@@ -89,6 +91,9 @@ private:
     // Callbacks
     InputEventCallback input_callback_;
     KeyEventCallback key_callback_;
+    
+    // Per-client receive buffers for handling partial reads
+    std::map<int, std::vector<uint8_t>> client_buffers_;
     
     mutable std::mutex mutex_;
 };
