@@ -315,11 +315,14 @@ int main(int argc, char* argv[]) {
     // Initialize renderer with default display (may fail in headless mode)
     if (!renderer_->initialize(EGL_DEFAULT_DISPLAY)) {
         WARNING("Failed to initialize EGL renderer - running in headless mode");
-        WARNING("Frame streaming from container will not work without GPU support");
+        WARNING("Some OpenGL operations may not work, but color buffer management should still function");
     } else {
-        registerRenderer(renderer_);
         INFO("EGL renderer initialized successfully");
     }
+    
+    // Always register the renderer, even if EGL fails - the renderer still manages
+    // color buffers which the container writes to via qemu_pipe
+    registerRenderer(renderer_);
 
     // Create streaming server
     std::shared_ptr<anbox::server::StreamingServer> streaming_server;

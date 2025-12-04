@@ -50,7 +50,20 @@ void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
     uint32_t width = rect_->width();
     uint32_t height = rect_->height();
     
-    DEBUG("submit_layers called with %zu renderables", renderables.size());
+    // Log on first call and periodically
+    static int call_count = 0;
+    call_count++;
+    if (call_count == 1 || (call_count % 100) == 0) {
+        INFO("submit_layers called (count=%d) with %zu renderables, display %ux%u",
+             call_count, renderables.size(), width, height);
+        for (const auto& r : renderables) {
+            INFO("  Renderable '%s': buffer=%u, screen_pos=(%d,%d,%d,%d), crop=(%d,%d,%d,%d)",
+                 r.name().c_str(), r.buffer(),
+                 r.screen_position().left(), r.screen_position().top(),
+                 r.screen_position().right(), r.screen_position().bottom(),
+                 r.crop().left(), r.crop().top(), r.crop().right(), r.crop().bottom());
+        }
+    }
     
     // Clear the frame buffer first (black background)
     std::memset(pixel_buffer_.data(), 0, pixel_buffer_.size());
@@ -66,6 +79,7 @@ void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
     // Find the topmost renderable that covers the full screen, or composite all
     for (const auto& r : renderables) {
         if (r.buffer() == 0) {
+            DEBUG("Skipping renderable '%s': buffer is 0", r.name().c_str());
             continue;
         }
         
@@ -78,11 +92,13 @@ void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
         int buf_height = crop.height() > 0 ? crop.height() : screen_pos.height();
         
         if (buf_width <= 0 || buf_height <= 0) {
+            DEBUG("Skipping renderable '%s': invalid dimensions %dx%d", 
+                  r.name().c_str(), buf_width, buf_height);
             continue;
         }
         
         // Allocate temporary buffer for this renderable
-        std::vector<uint8_t> temp_buffer(buf_width * buf_height * 4);
+        std::vector<uint8_t> temp_buffer(buf_width * buf_height * 4, 0);
         
         // Read the color buffer content
         renderer_->readColorBuffer(r.buffer(), 
@@ -91,6 +107,20 @@ void StreamingLayerComposer::submit_layers(const RenderableList& renderables) {
                                    buf_width, buf_height,
                                    GL_RGBA, GL_UNSIGNED_BYTE,
                                    temp_buffer.data());
+        
+        // Check if we actually got data (simple check for non-zero content)
+        bool has_data = false;
+        for (size_t i = 0; i < temp_buffer.size() && !has_data; i += 4) {
+            if (temp_buffer[i] != 0 || temp_buffer[i+1] != 0 || 
+                temp_buffer[i+2] != 0 || temp_buffer[i+3] != 0) {
+                has_data = true;
+            }
+        }
+        if (!has_data && call_count <= 5) {
+            WARNING("readColorBuffer for '%s' (buffer=%u) returned all zeros - "
+                    "color buffer may not exist or EGL may have failed",
+                    r.name().c_str(), r.buffer());
+        }
         
         // Composite this buffer onto the final frame
         int dest_x = screen_pos.left();
