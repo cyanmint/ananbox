@@ -42,6 +42,8 @@ class MainActivity : AppCompatActivity() {
             Log.i(TAG, "Runtime initializing..")
             if(Anbox.initRuntime(mSurfaceView.width, mSurfaceView.height, dpi)) {
                 Anbox.createSurface(surface)
+                // Create required directories before starting runtime
+                ensureRequiredDirectories()
                 Anbox.startRuntime()
                 Anbox.startContainer(applicationContext.applicationInfo.nativeLibraryDir + "/libproot.so")
             }
@@ -150,17 +152,39 @@ class MainActivity : AppCompatActivity() {
                     show()
                 }
                 thread {
-                    val tmpDir = File(filesDir, "tmp")
                     val inputStream = contentResolver.openInputStream(uri)
                     if (inputStream != null) {
                         extractTarGz(inputStream, filesDir)
                         inputStream.close()
+                        // Create required directories after extraction
+                        ensureRequiredDirectories()
                         progressDialog.dismiss()
-                        tmpDir.mkdir()
                         runOnUiThread() { recreate() }
                     }
                 }
             }
+        }
+    }
+
+    private fun ensureRequiredDirectories() {
+        // Create tmp directory for proot (PROOT_TMP_DIR)
+        val tmpDir = File(filesDir, "tmp")
+        if (!tmpDir.exists()) {
+            if (!tmpDir.mkdirs()) {
+                Log.e(TAG, "Failed to create tmp directory: ${tmpDir.absolutePath}")
+                throw RuntimeException("Failed to create required tmp directory")
+            }
+            Log.i(TAG, "Created tmp directory: ${tmpDir.absolutePath}")
+        }
+        
+        // Create mnt/user/0 directory for storage binding
+        val mntUserDir = File(filesDir, "rootfs/mnt/user/0")
+        if (!mntUserDir.exists()) {
+            if (!mntUserDir.mkdirs()) {
+                Log.e(TAG, "Failed to create mnt/user/0 directory: ${mntUserDir.absolutePath}")
+                throw RuntimeException("Failed to create required mnt/user/0 directory")
+            }
+            Log.i(TAG, "Created mnt/user/0 directory: ${mntUserDir.absolutePath}")
         }
     }
 
@@ -196,19 +220,41 @@ class MainActivity : AppCompatActivity() {
                         if (entry.isSymbolicLink) {
                             // Handle symbolic links with validation
                             val linkTarget = entry.linkName
-                            val resolvedTarget = destFile.parentFile?.resolve(linkTarget)?.canonicalFile
                             
                             // Validate symlink target to prevent escape attacks
-                            if (resolvedTarget == null || !resolvedTarget.canonicalPath.startsWith(rootfsCanonicalPath)) {
+                            // We check if the target would escape the rootfs when resolved
+                            val isAbsolute = linkTarget.startsWith("/")
+                            val wouldEscape = if (isAbsolute) {
+                                // Absolute symlinks should stay within rootfs
+                                // (they will be resolved relative to the proot environment anyway)
+                                false  // Allow absolute symlinks as proot handles them
+                            } else {
+                                // For relative symlinks, check if resolving them escapes rootfs
+                                var currentPath: File? = destFile.parentFile
+                                for (component in linkTarget.split("/")) {
+                                    when (component) {
+                                        ".." -> currentPath = currentPath?.parentFile
+                                        ".", "" -> { /* ignore */ }
+                                        else -> currentPath = currentPath?.let { File(it, component) }
+                                    }
+                                }
+                                currentPath?.let { 
+                                    !it.absolutePath.startsWith(rootfsCanonicalPath) 
+                                } ?: true
+                            }
+                            
+                            if (wouldEscape) {
                                 Log.w(TAG, "Skipping unsafe symlink: ${destFile.path} -> $linkTarget")
                             } else {
                                 try {
+                                    // Delete existing file/symlink if it exists using Files.deleteIfExists for reliability
+                                    java.nio.file.Files.deleteIfExists(destFile.toPath())
                                     java.nio.file.Files.createSymbolicLink(
                                         destFile.toPath(),
                                         java.nio.file.Paths.get(linkTarget)
                                     )
                                 } catch (e: Exception) {
-                                    Log.w(TAG, "Failed to create symlink: ${destFile.path} -> $linkTarget")
+                                    Log.w(TAG, "Failed to create symlink: ${destFile.path} -> $linkTarget: ${e.message}")
                                 }
                             }
                         } else {

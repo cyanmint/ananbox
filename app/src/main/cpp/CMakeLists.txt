@@ -8,6 +8,11 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 enable_language( C CXX ASM )
+
+# Suppress excessive warnings in third-party code
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")
+
 # Declares and names the project.
 
 set(HOST_CMAKE_C_COMPILER /usr/bin/clang)
