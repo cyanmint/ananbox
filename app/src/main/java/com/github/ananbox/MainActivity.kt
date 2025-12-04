@@ -226,11 +226,10 @@ class MainActivity : AppCompatActivity() {
                                 // For relative symlinks, check if resolving them escapes rootfs
                                 var currentPath: File? = destFile.parentFile
                                 for (component in linkTarget.split("/")) {
-                                    if (currentPath == null) break // Exit early if path becomes null
                                     when (component) {
-                                        ".." -> currentPath = currentPath.parentFile
+                                        ".." -> currentPath = currentPath?.parentFile
                                         ".", "" -> { /* ignore */ }
-                                        else -> currentPath = File(currentPath, component)
+                                        else -> currentPath = currentPath?.let { File(it, component) }
                                     }
                                 }
                                 currentPath?.let { 
