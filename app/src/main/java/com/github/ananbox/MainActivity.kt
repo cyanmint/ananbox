@@ -24,6 +24,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.github.ananbox.databinding.ActivityMainBinding
+import com.github.ananbox.scrcpy.ScrcpyClient
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -40,9 +41,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mSurfaceView: SurfaceView
     private var isRemoteMode = false
     private var isEmbeddedServerMode = false
+    private var isScrcpyMode = false
     private var remoteAddress = ""
     private var remotePort = 5558
+    private var scrcpyPort = 27183
     private var streamingClient: StreamingClient? = null
+    private var scrcpyClient: ScrcpyClient? = null
     @Volatile
     private var currentBitmap: Bitmap? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -51,8 +55,13 @@ class MainActivity : AppCompatActivity() {
     private val mSurfaceCallback: SurfaceHolder.Callback = object : SurfaceHolder.Callback {
         override fun surfaceCreated(holder: SurfaceHolder) {
             if (isRemoteMode) {
-                // Remote mode: connect to streaming server
-                connectToRemoteServer(holder)
+                if (isScrcpyMode) {
+                    // Scrcpy mode: use scrcpy client for video decoding
+                    connectViaScrcpy(holder)
+                } else {
+                    // Remote mode: connect to streaming server
+                    connectToRemoteServer(holder)
+                }
             } else if (isEmbeddedServerMode) {
                 // Embedded server mode: start local server then connect
                 startEmbeddedServerAndConnect(holder)
@@ -70,7 +79,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun surfaceDestroyed(holder: SurfaceHolder) {
-            if (isRemoteMode || isEmbeddedServerMode) {
+            if (isScrcpyMode) {
+                scrcpyClient?.disconnect()
+            } else if (isRemoteMode || isEmbeddedServerMode) {
                 streamingClient?.disconnect()
             } else {
                 Anbox.destroySurface()
@@ -187,6 +198,71 @@ class MainActivity : AppCompatActivity() {
             process.destroy()
             embeddedServerProcess = null
         }
+    }
+    
+    private fun connectViaScrcpy(holder: SurfaceHolder) {
+        Log.i(TAG, "Connecting via scrcpy to $remoteAddress:$scrcpyPort")
+        
+        Toast.makeText(this, 
+            getString(R.string.scrcpy_connecting, remoteAddress, scrcpyPort.toString()),
+            Toast.LENGTH_SHORT).show()
+        
+        scrcpyClient = ScrcpyClient(remoteAddress, scrcpyPort)
+        
+        scrcpyClient?.onConnected = { deviceName, width, height ->
+            mainHandler.post {
+                Toast.makeText(this@MainActivity,
+                    getString(R.string.scrcpy_connected, deviceName, width, height),
+                    Toast.LENGTH_SHORT).show()
+            }
+        }
+        
+        scrcpyClient?.onDisconnected = { reason ->
+            mainHandler.post {
+                Toast.makeText(this@MainActivity,
+                    getString(R.string.scrcpy_disconnected),
+                    Toast.LENGTH_SHORT).show()
+            }
+        }
+        
+        scrcpyClient?.onError = { error ->
+            mainHandler.post {
+                Toast.makeText(this@MainActivity,
+                    getString(R.string.scrcpy_error, error),
+                    Toast.LENGTH_LONG).show()
+            }
+        }
+        
+        scrcpyClient?.connect(holder.surface)
+    }
+    
+    private val scrcpyTouchListener = View.OnTouchListener { v, event ->
+        val client = scrcpyClient ?: return@OnTouchListener true
+        
+        val maskedAction = event.action and MotionEvent.ACTION_MASK
+        val action = when (maskedAction) {
+            MotionEvent.ACTION_DOWN -> 0  // AMOTION_EVENT_ACTION_DOWN
+            MotionEvent.ACTION_UP -> 1    // AMOTION_EVENT_ACTION_UP
+            MotionEvent.ACTION_MOVE -> 2  // AMOTION_EVENT_ACTION_MOVE
+            MotionEvent.ACTION_POINTER_DOWN -> 5  // AMOTION_EVENT_ACTION_POINTER_DOWN
+            MotionEvent.ACTION_POINTER_UP -> 6    // AMOTION_EVENT_ACTION_POINTER_UP
+            else -> return@OnTouchListener true
+        }
+        
+        // Handle multi-touch
+        for (i in 0 until event.pointerCount) {
+            val pointerId = event.getPointerId(i)
+            val x = event.getX(i).toInt()
+            val y = event.getY(i).toInt()
+            
+            if (maskedAction == MotionEvent.ACTION_MOVE) {
+                client.sendTouchEvent(x, y, 2, pointerId)
+            } else if (i == event.actionIndex) {
+                client.sendTouchEvent(x, y, action, pointerId)
+            }
+        }
+        
+        true
     }
     
     private fun connectToRemoteServer(holder: SurfaceHolder) {
@@ -322,7 +398,14 @@ class MainActivity : AppCompatActivity() {
             remotePort = intent.getIntExtra("remote_port", 
                 SettingsActivity.getRemotePort(this))
             
-            Log.i(TAG, "Remote mode enabled: $remoteAddress:$remotePort")
+            // Check if scrcpy mode is enabled
+            isScrcpyMode = SettingsActivity.isScrcpyModeEnabled(this)
+            if (isScrcpyMode) {
+                scrcpyPort = SettingsActivity.getScrcpyPort(this)
+                Log.i(TAG, "Scrcpy mode enabled: $remoteAddress:$scrcpyPort")
+            } else {
+                Log.i(TAG, "Remote mode enabled: $remoteAddress:$remotePort")
+            }
         } else {
             // Check container mode for local operation
             val containerMode = SettingsActivity.getContainerMode(this)
@@ -370,7 +453,9 @@ class MainActivity : AppCompatActivity() {
         binding.root.addView(mSurfaceView, 0)
 
         // Set touch listener based on mode
-        if (isRemoteMode || isEmbeddedServerMode) {
+        if (isScrcpyMode) {
+            mSurfaceView.setOnTouchListener(scrcpyTouchListener)
+        } else if (isRemoteMode || isEmbeddedServerMode) {
             mSurfaceView.setOnTouchListener(remoteTouchListener)
         } else {
             mSurfaceView.setOnTouchListener(Anbox)

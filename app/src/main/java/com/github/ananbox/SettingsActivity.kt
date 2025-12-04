@@ -109,6 +109,23 @@ class SettingsActivity : AppCompatActivity() {
                 5555
             }
         }
+        
+        fun isScrcpyModeEnabled(context: Context): Boolean {
+            return PreferenceManager.getDefaultSharedPreferences(context)
+                .getBoolean(context.getString(R.string.settings_scrcpy_enabled_key), false)
+        }
+        
+        fun getScrcpyPort(context: Context): Int {
+            val portStr = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_scrcpy_port_key),
+                          context.getString(R.string.settings_scrcpy_port_default))
+                ?: context.getString(R.string.settings_scrcpy_port_default)
+            return try {
+                portStr.toInt()
+            } catch (e: NumberFormatException) {
+                27183
+            }
+        }
     }
 
     class SettingsFragment: PreferenceFragmentCompat() {
@@ -237,7 +254,6 @@ class SettingsActivity : AppCompatActivity() {
                 
                 // Show dialog with ADB connection instructions
                 val adbCommand = getString(R.string.adb_connect_command, address, adbPortNum.toString())
-                val scrcpyCommand = "scrcpy -s $address:$adbPortNum"
                 
                 val message = getString(R.string.adb_connect_hint, address, adbPortNum.toString()) + 
                               "\n\n" + getString(R.string.scrcpy_hint, address, adbPortNum.toString())

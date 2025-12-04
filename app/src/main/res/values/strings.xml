@@ -67,7 +67,7 @@
     <!-- ADB Settings for Remote Server -->
     <string name="settings_adb_enabled_key">adb_enabled</string>
     <string name="settings_adb_enabled_title">Connect via ADB (scrcpy)</string>
-    <string name="settings_adb_enabled_summary">Use ADB connection instead of streaming. Enables scrcpy and other ADB tools.</string>
+    <string name="settings_adb_enabled_summary">Use scrcpy protocol for better performance. Requires scrcpy server on remote.</string>
     <string name="settings_adb_port_key">adb_port</string>
     <string name="settings_adb_port_title">ADB Port</string>
     <string name="settings_adb_port_summary">Port number for ADB connection (default: 5555)</string>
@@ -75,9 +75,13 @@
     <string name="settings_adb_connect_key">adb_connect</string>
     <string name="settings_adb_connect_title">Connect via ADB</string>
     <string name="settings_adb_connect_summary">Connect to the remote server using ADB</string>
-    <string name="settings_adb_scrcpy_key">adb_scrcpy</string>
-    <string name="settings_adb_scrcpy_title">Launch scrcpy</string>
-    <string name="settings_adb_scrcpy_summary">Open scrcpy with the configured ADB connection</string>
+    <string name="settings_scrcpy_enabled_key">scrcpy_enabled</string>
+    <string name="settings_scrcpy_enabled_title">Use scrcpy Renderer</string>
+    <string name="settings_scrcpy_enabled_summary">Use scrcpy H264 video decoding for better performance</string>
+    <string name="settings_scrcpy_port_key">scrcpy_port</string>
+    <string name="settings_scrcpy_port_title">scrcpy Port</string>
+    <string name="settings_scrcpy_port_summary">Port for scrcpy video stream (default: 27183)</string>
+    <string name="settings_scrcpy_port_default">27183</string>
     
     <!-- Connection Status -->
     <string name="remote_connecting">Connecting to %1$s:%2$s…</string>
@@ -89,4 +93,8 @@
     <string name="adb_connect_hint">Run this command to connect:\nadb connect %1$s:%2$s</string>
     <string name="scrcpy_hint">Then run scrcpy:\nscrcpy -s %1$s:%2$s</string>
     <string name="adb_command_copied">ADB command copied to clipboard</string>
+    <string name="scrcpy_connecting">Connecting via scrcpy to %1$s:%2$s…</string>
+    <string name="scrcpy_connected">Connected via scrcpy: %1$s (%2$dx%3$d)</string>
+    <string name="scrcpy_disconnected">scrcpy disconnected</string>
+    <string name="scrcpy_error">scrcpy error: %1$s</string>
 </resources>

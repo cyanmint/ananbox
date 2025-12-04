@@ -82,6 +82,20 @@
             app:dependency="@string/settings_remote_enabled_key"/>
 
         <SwitchPreferenceCompat
+            app:key="@string/settings_scrcpy_enabled_key"
+            app:title="@string/settings_scrcpy_enabled_title"
+            app:summary="@string/settings_scrcpy_enabled_summary"
+            app:defaultValue="false"
+            app:dependency="@string/settings_remote_enabled_key"/>
+
+        <EditTextPreference
+            app:key="@string/settings_scrcpy_port_key"
+            app:title="@string/settings_scrcpy_port_title"
+            app:summary="@string/settings_scrcpy_port_summary"
+            app:defaultValue="@string/settings_scrcpy_port_default"
+            app:dependency="@string/settings_scrcpy_enabled_key"/>
+
+        <SwitchPreferenceCompat
             app:key="@string/settings_adb_enabled_key"
             app:title="@string/settings_adb_enabled_title"
             app:summary="@string/settings_adb_enabled_summary"
