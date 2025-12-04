@@ -95,21 +95,26 @@ void PipeConnectionCreator::create_connection_for(
         &socket) {
   auto const messenger = std::make_shared<network::LocalSocketMessenger>(socket);
   const auto type = identify_client(messenger);
+  INFO("qemu_pipe: New client connection, type=%s", client_type_to_string(type).c_str());
+  
   auto const processor = create_processor(type, messenger);
   if (!processor)
     BOOST_THROW_EXCEPTION(std::runtime_error("Unhandled client type"));
 
   std::shared_ptr<network::SocketConnection> connection;
-  if (type == client_type::opengles)
+  if (type == client_type::opengles) {
+    INFO("qemu_pipe: Creating OpenGL ES connection");
     connection = std::make_shared<graphics::OpenGlesSocketConnection>(
         messenger, messenger, next_id(), connections_, processor);
-  else
+  } else {
     connection = std::make_shared<network::SocketConnection>(
         messenger, messenger, next_id(), connections_, processor);
+  }
 
   connection->set_name(client_type_to_string(type));
   connections_->add(connection);
   connection->read_next_message();
+  INFO("qemu_pipe: Client '%s' connected (id=%d)", client_type_to_string(type).c_str(), connection->id());
 }
 
 PipeConnectionCreator::client_type PipeConnectionCreator::identify_client(

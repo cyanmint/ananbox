@@ -266,15 +266,27 @@ static void rcDestroyWindowSurface(uint32_t windowSurface) {
 
 static uint32_t rcCreateColorBuffer(uint32_t width, uint32_t height,
                                     GLenum internalFormat) {
+  static int create_count = 0;
+  create_count++;
 #ifdef ANANBOX_SERVER
   if (use_software_renderer) {
-    return anbox::server::SoftwareColorBufferStore::instance().create(width, height);
+    uint32_t handle = anbox::server::SoftwareColorBufferStore::instance().create(width, height);
+    if (create_count <= 10) {
+      DEBUG("rcCreateColorBuffer[%d]: software mode, %ux%u -> handle=%u", create_count, width, height, handle);
+    }
+    return handle;
   }
 #endif
-  if (!renderer)
+  if (!renderer) {
+    WARNING("rcCreateColorBuffer: renderer is null!");
     return 0;
+  }
 
-  return renderer->createColorBuffer(width, height, internalFormat);
+  uint32_t handle = renderer->createColorBuffer(width, height, internalFormat);
+  if (create_count <= 10) {
+    DEBUG("rcCreateColorBuffer[%d]: EGL mode, %ux%u -> handle=%u", create_count, width, height, handle);
+  }
+  return handle;
 }
 
 static int rcOpenColorBuffer2(uint32_t colorbuffer) {
@@ -467,6 +479,14 @@ void rcPostLayer(const char *name, uint32_t color_buffer, float alpha,
                  int32_t sourceCropRight, int32_t sourceCropBottom,
                  int32_t displayFrameLeft, int32_t displayFrameTop,
                  int32_t displayFrameRight, int32_t displayFrameBottom) {
+  static int post_layer_count = 0;
+  post_layer_count++;
+  if (post_layer_count <= 5 || (post_layer_count % 100) == 0) {
+    DEBUG("rcPostLayer[%d]: name='%s' cb=%u alpha=%.2f screen=(%d,%d,%d,%d) crop=(%d,%d,%d,%d)",
+          post_layer_count, name, color_buffer, alpha,
+          displayFrameLeft, displayFrameTop, displayFrameRight, displayFrameBottom,
+          sourceCropLeft, sourceCropTop, sourceCropRight, sourceCropBottom);
+  }
   Renderable r{
       name,
       color_buffer,
@@ -477,6 +497,12 @@ void rcPostLayer(const char *name, uint32_t color_buffer, float alpha,
 }
 
 void rcPostAllLayersDone() {
+  static int post_done_count = 0;
+  post_done_count++;
+  if (post_done_count <= 5 || (post_done_count % 100) == 0) {
+    DEBUG("rcPostAllLayersDone[%d]: submitting %zu layers, composer=%s",
+          post_done_count, frame_layers.size(), composer ? "yes" : "no");
+  }
   if (composer) composer->submit_layers(frame_layers);
 
   frame_layers.clear();
