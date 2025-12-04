@@ -44,7 +44,7 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build with Gradle
-      run: ./gradlew assembleRelease assembleDebug 2>&1 | grep -v "warning:" | grep -v "C/C++:"
+      run: ./gradlew assembleRelease assembleDebug
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
