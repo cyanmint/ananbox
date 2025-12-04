@@ -20,14 +20,60 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <thread>
+#include <linux/input.h>
 
 #include "anbox/logger.h"
 #include "anbox/runtime.h"
+#include "anbox/graphics/emugl/Renderer.h"
+#include "anbox/graphics/emugl/RenderApi.h"
+#include "anbox/graphics/emugl/RenderControl.h"
+#include "anbox/graphics/emugl/DisplayManager.h"
+#include "anbox/graphics/layer_composer.h"
+#include "anbox/network/published_socket_connector.h"
+#include "anbox/qemu/pipe_connection_creator.h"
+#include "anbox/input/manager.h"
+#include "anbox/input/device.h"
+#include "anbox/application/sensors_state.h"
+#include "anbox/application/gps_info_broker.h"
+#include "external/android-emugl/shared/emugl/common/logging.h"
 #include "server/streaming_server.h"
 #include "server/streaming_protocol.h"
+#include "server/streaming_layer_composer.h"
 
 static volatile bool running = true;
 static pid_t container_pid = -1;
+
+// Anbox runtime components
+static std::shared_ptr<anbox::Runtime> rt;
+static std::shared_ptr<::Renderer> renderer_;
+static std::shared_ptr<anbox::network::PublishedSocketConnector> qemu_pipe_connector_;
+static std::shared_ptr<anbox::input::Device> touch_;
+static std::shared_ptr<anbox::graphics::Rect> frame;
+static std::shared_ptr<anbox::server::StreamingLayerComposer> streaming_composer_;
+
+// Logging callback for emugl
+static void emugl_logger(const emugl::LogLevel& level, const char* format, ...) {
+    char message[2048];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(message, sizeof(message) - 1, format, args);
+    va_end(args);
+    
+    switch (level) {
+        case emugl::LogLevel::WARNING:
+            WARNING("%s", message);
+            break;
+        case emugl::LogLevel::ERROR:
+        case emugl::LogLevel::FATAL:
+            ERROR("%s", message);
+            break;
+        case emugl::LogLevel::DEBUG:
+            DEBUG("%s", message);
+            break;
+        default:
+            break;
+    }
+}
 
 void signal_handler(int signum) {
     INFO("Received signal %d, shutting down...", signum);
@@ -250,9 +296,142 @@ int main(int argc, char* argv[]) {
     INFO("  Temp dir: %s", tmp_dir.c_str());
     INFO("  Startup script: %s", startup_script.c_str());
 
-    // Note: In Termux standalone mode, we skip EGL/renderer initialization
-    // as we don't have a display. The server will just forward streaming data.
-    INFO("Running in headless mode (no GPU rendering)");
+    // Initialize emugl logging
+    set_emugl_logger(emugl_logger);
+    set_emugl_cxt_logger(emugl_logger);
+
+    // Create runtime for async I/O
+    rt = anbox::Runtime::create();
+
+    // Initialize the Renderer (OpenGL ES emulation)
+    renderer_ = std::make_shared<::Renderer>();
+    frame = std::make_shared<anbox::graphics::Rect>();
+    frame->resize(display_width, display_height);
+    
+    auto display_info = anbox::graphics::emugl::DisplayInfo::get();
+    display_info->set_resolution(display_width, display_height);
+    display_info->set_dpi(display_dpi);
+
+    // Initialize renderer with default display (may fail in headless mode)
+    if (!renderer_->initialize(EGL_DEFAULT_DISPLAY)) {
+        WARNING("Failed to initialize EGL renderer - running in headless mode");
+        WARNING("Frame streaming from container will not work without GPU support");
+    } else {
+        registerRenderer(renderer_);
+        INFO("EGL renderer initialized successfully");
+    }
+
+    // Create streaming server
+    std::shared_ptr<anbox::server::StreamingServer> streaming_server;
+    
+    try {
+        // Start the runtime (this spawns worker threads for async I/O)
+        rt->start();
+        
+        // Create streaming server
+        streaming_server = std::make_shared<anbox::server::StreamingServer>(
+            rt, listen_address, listen_port);
+        
+        // Set display configuration
+        streaming_server->set_display_config(display_width, display_height, display_dpi);
+        
+        // Create streaming layer composer that will capture frames and send to clients
+        streaming_composer_ = std::make_shared<anbox::server::StreamingLayerComposer>(
+            renderer_, frame);
+        streaming_composer_->set_frame_callback(
+            [streaming_server](const void* data, uint32_t width, uint32_t height, uint32_t stride) {
+                streaming_server->send_frame(data, width, height, 
+                    anbox::server::PIXEL_FORMAT_RGBA8888, stride);
+            });
+        
+        // Register the streaming layer composer
+        registerLayerComposer(streaming_composer_);
+        
+        // Start the streaming server
+        streaming_server->start();
+        
+        INFO("Streaming server listening on %s:%d", listen_address.c_str(), listen_port);
+    } catch (const std::exception& e) {
+        ERROR("Failed to start streaming server: %s", e.what());
+        // Kill container if running
+        if (container_pid > 0) {
+            kill(container_pid, SIGTERM);
+        }
+        if (rt) {
+            rt->stop();
+        }
+        return 1;
+    }
+
+    // Initialize input manager for touch/key events from clients
+    auto input_manager = std::make_shared<anbox::input::Manager>(
+        rt, anbox::utils::string_format("%s/dev/input", rootfs_path.c_str()));
+    
+    touch_ = input_manager->create_device();
+    touch_->set_name("anbox-touch");
+    touch_->set_driver_version(1);
+    touch_->set_input_id({BUS_VIRTUAL, 4, 4, 4});
+    touch_->set_physical_location("none");
+    touch_->set_abs_bit(ABS_MT_SLOT);
+    touch_->set_abs_max(ABS_MT_SLOT, 10);
+    touch_->set_abs_bit(ABS_MT_TOUCH_MAJOR);
+    touch_->set_abs_max(ABS_MT_TOUCH_MAJOR, 127);
+    touch_->set_abs_bit(ABS_MT_TOUCH_MINOR);
+    touch_->set_abs_max(ABS_MT_TOUCH_MINOR, 127);
+    touch_->set_abs_bit(ABS_MT_POSITION_X);
+    touch_->set_abs_max(ABS_MT_POSITION_X, display_width);
+    touch_->set_abs_bit(ABS_MT_POSITION_Y);
+    touch_->set_abs_max(ABS_MT_POSITION_Y, display_height);
+    touch_->set_abs_bit(ABS_MT_TRACKING_ID);
+    touch_->set_abs_max(ABS_MT_TRACKING_ID, 10);
+    touch_->set_prop_bit(INPUT_PROP_DIRECT);
+
+    // Set up input callback from streaming server
+    streaming_server->set_input_callback(
+        [](const anbox::server::TouchEvent& event) {
+            if (!touch_) return;
+            std::vector<anbox::input::Event> touch_events;
+            
+            // Handle slot
+            static int last_slot = -1;
+            int slot = event.finger_id % 10;
+            if (last_slot != slot) {
+                touch_events.push_back({EV_ABS, ABS_MT_SLOT, slot});
+                last_slot = slot;
+            }
+            
+            switch (event.action) {
+                case anbox::server::TOUCH_ACTION_DOWN:
+                    touch_events.push_back({EV_ABS, ABS_MT_TRACKING_ID, static_cast<int32_t>(event.finger_id % 10 + 1)});
+                    touch_events.push_back({EV_ABS, ABS_MT_POSITION_X, static_cast<int32_t>(event.x)});
+                    touch_events.push_back({EV_ABS, ABS_MT_POSITION_Y, static_cast<int32_t>(event.y)});
+                    break;
+                case anbox::server::TOUCH_ACTION_MOVE:
+                    touch_events.push_back({EV_ABS, ABS_MT_POSITION_X, static_cast<int32_t>(event.x)});
+                    touch_events.push_back({EV_ABS, ABS_MT_POSITION_Y, static_cast<int32_t>(event.y)});
+                    break;
+                case anbox::server::TOUCH_ACTION_UP:
+                    touch_events.push_back({EV_ABS, ABS_MT_TRACKING_ID, -1});
+                    break;
+            }
+            
+            touch_events.push_back({EV_SYN, SYN_REPORT, 0});
+            touch_->send_events(touch_events);
+        });
+
+    // Initialize qemu_pipe for Android container communication
+    auto sensors_state = std::make_shared<anbox::application::SensorsState>();
+    auto gps_info_broker = std::make_shared<anbox::application::GpsInfoBroker>();
+    
+    std::string socket_file = anbox::utils::string_format("%s/qemu_pipe", base_path.c_str());
+    unlink(socket_file.c_str());  // Remove old socket if exists
+    
+    qemu_pipe_connector_ = std::make_shared<anbox::network::PublishedSocketConnector>(
+        socket_file, rt,
+        std::make_shared<anbox::qemu::PipeConnectionCreator>(
+            renderer_, rt, sensors_state, gps_info_broker));
+    
+    INFO("qemu_pipe socket created at %s", socket_file.c_str());
 
     // Start the container if startup script is available
     if (access(startup_script.c_str(), F_OK) == 0) {
@@ -260,6 +439,7 @@ int main(int argc, char* argv[]) {
         container_pid = fork();
         if (container_pid < 0) {
             ERROR("fork() failed: %s", strerror(errno));
+            rt->stop();
             return 1;
         } else if (container_pid == 0) {
             // Child process
@@ -300,40 +480,6 @@ int main(int argc, char* argv[]) {
         INFO("Running server only (no container). Use -s to specify a startup script.");
     }
 
-    // Initialize and start the streaming server
-    std::shared_ptr<anbox::Runtime> runtime;
-    std::shared_ptr<anbox::server::StreamingServer> streaming_server;
-    
-    try {
-        // Create runtime for async I/O
-        runtime = anbox::Runtime::create();
-        
-        // Start the runtime (this spawns worker threads for async I/O)
-        runtime->start();
-        
-        // Create streaming server
-        streaming_server = std::make_shared<anbox::server::StreamingServer>(
-            runtime, listen_address, listen_port);
-        
-        // Set display configuration
-        streaming_server->set_display_config(display_width, display_height, display_dpi);
-        
-        // Start the streaming server
-        streaming_server->start();
-        
-        INFO("Streaming server listening on %s:%d", listen_address.c_str(), listen_port);
-    } catch (const std::exception& e) {
-        ERROR("Failed to start streaming server: %s", e.what());
-        // Kill container if running
-        if (container_pid > 0) {
-            kill(container_pid, SIGTERM);
-        }
-        if (runtime) {
-            runtime->stop();
-        }
-        return 1;
-    }
-
     INFO("Server is running. Press Ctrl+C to stop.");
 
     // Main loop - wait for shutdown or child exit
@@ -362,14 +508,18 @@ int main(int argc, char* argv[]) {
     // Cleanup
     INFO("Shutting down...");
     
+    // Unregister layer composer
+    unRegisterLayerComposer();
+    streaming_composer_.reset();
+    
     // Stop streaming server
     if (streaming_server) {
         streaming_server->stop();
     }
     
     // Stop runtime
-    if (runtime) {
-        runtime->stop();
+    if (rt) {
+        rt->stop();
     }
     
     // Kill container if still running

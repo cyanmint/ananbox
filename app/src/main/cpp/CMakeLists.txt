@@ -95,6 +95,7 @@ target_link_libraries( # Specifies the target library.
 if(BUILD_ANANBOX_SERVER AND ANDROID)
     set(SERVER_SOURCES
         ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_server.cpp
+        ${CMAKE_SOURCE_DIR}/anbox/src/server/streaming_layer_composer.cpp
         ${CMAKE_SOURCE_DIR}/anbox/src/server/main.cpp
     )
 
@@ -104,6 +105,7 @@ if(BUILD_ANANBOX_SERVER AND ANDROID)
         ${CMAKE_SOURCE_DIR}/anbox/src/server
         ${CMAKE_SOURCE_DIR}/anbox/src
         ${CMAKE_SOURCE_DIR}/anbox/src/anbox
+        ${CMAKE_SOURCE_DIR}/anbox/external/android-emugl/shared
         ${Boost_INCLUDE_DIRS}
     )
     
