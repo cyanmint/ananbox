@@ -377,3 +377,6 @@ target_link_libraries(ananbox
     anbox-core)
 add_backward(ananbox)
 endif()
+
+# Include server subdirectory for standalone server build
+add_subdirectory(server)

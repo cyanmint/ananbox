@@ -27,4 +27,35 @@
         app:title="@string/settings_shutdown_title"
         app:summary="@string/settings_shutdown_summary"/>
 
+    <PreferenceCategory
+        app:title="@string/settings_remote_category">
+
+        <SwitchPreferenceCompat
+            app:key="@string/settings_remote_enabled_key"
+            app:title="@string/settings_remote_enabled_title"
+            app:summary="@string/settings_remote_enabled_summary"
+            app:defaultValue="false"/>
+
+        <EditTextPreference
+            app:key="@string/settings_remote_address_key"
+            app:title="@string/settings_remote_address_title"
+            app:summary="@string/settings_remote_address_summary"
+            app:defaultValue="@string/settings_remote_address_default"
+            app:dependency="@string/settings_remote_enabled_key"/>
+
+        <EditTextPreference
+            app:key="@string/settings_remote_port_key"
+            app:title="@string/settings_remote_port_title"
+            app:summary="@string/settings_remote_port_summary"
+            app:defaultValue="@string/settings_remote_port_default"
+            app:dependency="@string/settings_remote_enabled_key"/>
+
+        <Preference
+            app:key="@string/settings_remote_connect_key"
+            app:title="@string/settings_remote_connect_title"
+            app:summary="@string/settings_remote_connect_summary"
+            app:dependency="@string/settings_remote_enabled_key"/>
+
+    </PreferenceCategory>
+
 </PreferenceScreen>

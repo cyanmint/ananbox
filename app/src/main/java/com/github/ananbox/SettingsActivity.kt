@@ -5,8 +5,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.MenuItem
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.preference.EditTextPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
@@ -31,6 +33,30 @@ class SettingsActivity : AppCompatActivity() {
             return PreferenceManager.getDefaultSharedPreferences(context)
                 .getBoolean(context.getString(R.string.settings_verbose_key), false)
         }
+        
+        fun isRemoteModeEnabled(context: Context): Boolean {
+            return PreferenceManager.getDefaultSharedPreferences(context)
+                .getBoolean(context.getString(R.string.settings_remote_enabled_key), false)
+        }
+        
+        fun getRemoteAddress(context: Context): String {
+            return PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_remote_address_key), 
+                          context.getString(R.string.settings_remote_address_default)) 
+                ?: context.getString(R.string.settings_remote_address_default)
+        }
+        
+        fun getRemotePort(context: Context): Int {
+            val portStr = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_remote_port_key),
+                          context.getString(R.string.settings_remote_port_default))
+                ?: context.getString(R.string.settings_remote_port_default)
+            return try {
+                portStr.toInt()
+            } catch (e: NumberFormatException) {
+                5558
+            }
+        }
     }
 
     class SettingsFragment: PreferenceFragmentCompat() {
@@ -42,6 +68,12 @@ class SettingsActivity : AppCompatActivity() {
             val viewLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_logs_key))
             val exportLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_export_logs_key))
             val verboseMode = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_verbose_key))
+            
+            // Remote server settings
+            val remoteEnabled = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_remote_enabled_key))
+            val remoteAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_address_key))
+            val remotePort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_port_key))
+            val remoteConnect = preferenceScreen.findPreference<Preference>(getString(R.string.settings_remote_connect_key))
 
             start?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
                 startActivity(Intent(activity, MainActivity::class.java))
@@ -62,6 +94,44 @@ class SettingsActivity : AppCompatActivity() {
 
             exportLogs?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
                 exportLogFiles()
+                true
+            }
+            
+            // Update remote address summary with current value
+            remoteAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+                if (pref.text.isNullOrEmpty()) {
+                    getString(R.string.settings_remote_address_summary)
+                } else {
+                    pref.text
+                }
+            }
+            
+            // Update remote port summary with current value
+            remotePort?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+                if (pref.text.isNullOrEmpty()) {
+                    getString(R.string.settings_remote_port_summary)
+                } else {
+                    "Port: ${pref.text}"
+                }
+            }
+            
+            // Handle connect button
+            remoteConnect?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                val context = activity ?: return@OnPreferenceClickListener true
+                val address = getRemoteAddress(context)
+                val port = getRemotePort(context)
+                
+                Toast.makeText(context, 
+                    getString(R.string.remote_connecting, address, port.toString()),
+                    Toast.LENGTH_SHORT).show()
+                
+                // Start MainActivity which will connect to remote server
+                val intent = Intent(activity, MainActivity::class.java).apply {
+                    putExtra("remote_mode", true)
+                    putExtra("remote_address", address)
+                    putExtra("remote_port", port)
+                }
+                startActivity(intent)
                 true
             }
         }
