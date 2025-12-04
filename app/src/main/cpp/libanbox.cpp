@@ -183,7 +183,7 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring proot_) {
     char cmd[255];
-    char tmp_dir[512];
+    char tmp_dir[sizeof(path) + 16];  // path + "/tmp" + null terminator with margin
     if (fork() != 0) {
         return;
     }
@@ -192,8 +192,10 @@ Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
     
     // Set PROOT_TMP_DIR environment variable before starting the container
-    snprintf(tmp_dir, sizeof(tmp_dir), "%s/tmp", path);
-    setenv("PROOT_TMP_DIR", tmp_dir, 1);
+    int tmp_len = snprintf(tmp_dir, sizeof(tmp_dir), "%s/tmp", path);
+    if (tmp_len > 0 && static_cast<size_t>(tmp_len) < sizeof(tmp_dir)) {
+        setenv("PROOT_TMP_DIR", tmp_dir, 1);
+    }
     
     const char *proot = env->GetStringUTFChars(proot_, 0);
     sprintf(cmd, "sh %s/rootfs/run.sh %s %s", path, path, proot);
