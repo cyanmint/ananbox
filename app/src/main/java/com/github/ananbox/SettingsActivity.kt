@@ -75,8 +75,15 @@ class SettingsActivity : AppCompatActivity() {
         }
         
         fun getRemotePort(context: Context): Int {
-            // Use remote ADB port for streaming as well
-            return getRemoteAdbPort(context)
+            val portStr = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_remote_server_port_key),
+                          context.getString(R.string.settings_remote_server_port_default))
+                ?: context.getString(R.string.settings_remote_server_port_default)
+            return try {
+                portStr.toInt()
+            } catch (e: NumberFormatException) {
+                5558
+            }
         }
         
         fun getAdbPort(context: Context): Int {
@@ -146,6 +153,7 @@ class SettingsActivity : AppCompatActivity() {
             
             // Remote settings
             val remoteAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_address_key))
+            val remoteServerPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_server_port_key))
             val remoteAdbPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_adb_port_key))
             
             // Settings group
@@ -302,6 +310,15 @@ class SettingsActivity : AppCompatActivity() {
                     getString(R.string.settings_remote_address_summary)
                 } else {
                     pref.text
+                }
+            }
+            
+            // Update remote server port summary with current value
+            remoteServerPort?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+                if (pref.text.isNullOrEmpty()) {
+                    getString(R.string.settings_remote_server_port_summary)
+                } else {
+                    "Port: ${pref.text}"
                 }
             }
             

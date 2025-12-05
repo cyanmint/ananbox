@@ -59,6 +59,10 @@
     <string name="settings_remote_address_title">Remote Server Address</string>
     <string name="settings_remote_address_summary">IP address of the remote Ananbox server</string>
     <string name="settings_remote_address_default">192.168.1.100</string>
+    <string name="settings_remote_server_port_key">remote_server_port</string>
+    <string name="settings_remote_server_port_title">Remote Server Port</string>
+    <string name="settings_remote_server_port_summary">Port for streaming connection (default: 5558)</string>
+    <string name="settings_remote_server_port_default">5558</string>
     <string name="settings_remote_adb_port_key">remote_adb_port</string>
     <string name="settings_remote_adb_port_title">Remote ADB Port</string>
     <string name="settings_remote_adb_port_summary">Port for ADB/scrcpy connection (default: 5555)</string>

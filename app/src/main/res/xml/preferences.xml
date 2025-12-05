@@ -64,6 +64,12 @@
             app:defaultValue="@string/settings_remote_address_default"/>
 
         <EditTextPreference
+            app:key="@string/settings_remote_server_port_key"
+            app:title="@string/settings_remote_server_port_title"
+            app:summary="@string/settings_remote_server_port_summary"
+            app:defaultValue="@string/settings_remote_server_port_default"/>
+
+        <EditTextPreference
             app:key="@string/settings_remote_adb_port_key"
             app:title="@string/settings_remote_adb_port_title"
             app:summary="@string/settings_remote_adb_port_summary"
