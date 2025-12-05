@@ -25,6 +25,10 @@ ExternalProject_Add(
         BUILD_COMMAND cd ${PROOT_SRC} && make CC=${PROOT_C_COMPILER} LD=${PROOT_C_COMPILER} STRIP=${CMAKE_STRIP} OBJCOPY=${CMAKE_OBJCOPY} OBJDUMP=${CMAKE_OBJDUMP} CFLAGS=${PROOT_C_FLAGS} LDFLAGS=${PROOT_LINKER_FLAGS} HAS_SWIG= HAS_PYTHON_CONFIG=
         BUILD_IN_SOURCE 1
         # hacked: only lib*.so can be packed into apk
-        INSTALL_COMMAND cd ${PROOT_SRC} && cp -f ./proot ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libproot.so
+        # Copy proot binary and loader binary (needed for noexec filesystem workaround)
+        # The loader is a small static binary that proot needs to execute in PROOT_TMP_DIR
+        # On Android, filesDir has noexec flag, so we bundle the loader in the APK's lib dir
+        # and use PROOT_LOADER env variable to point to it (lib dir has exec permission)
+        INSTALL_COMMAND cd ${PROOT_SRC} && cp -f ./proot ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libproot.so && cp -f ./loader/loader ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libproot-loader.so
         DEPENDS talloc unwind_ptrace
 )

@@ -123,9 +123,19 @@ class SettingsActivity : AppCompatActivity() {
                     }
                     val (serverPath, prootPath) = binaries
                     
-                    // Use internal tmp directory for proot
+                    // Use filesDir/tmp for proot temporary files (writable)
+                    // Note: This directory has noexec flag on modern Android, but we use
+                    // PROOT_LOADER env variable to point to the pre-built loader in nativeLibraryDir
+                    // which has execute permission. This avoids proot needing to extract+execute
+                    // the loader from PROOT_TMP_DIR.
                     val prootTmpDir = File(filesDir, "tmp")
                     prootTmpDir.mkdirs()
+                    
+                    // Get the path to the proot loader in the native library directory
+                    // The loader binary is bundled as libproot-loader.so in the APK
+                    // The nativeLibraryDir has execute permission, so the loader can run from there
+                    val nativeLibDir = context.applicationInfo.nativeLibraryDir
+                    val prootLoaderPath = "$nativeLibDir/libproot-loader.so"
                     
                     val localServerAddress = getLocalServerAddress(context)
                     val localPort = getLocalServerPort(context)
@@ -166,9 +176,14 @@ class SettingsActivity : AppCompatActivity() {
                     )
                     
                     Log.i(TAG, "Starting embedded server: ${command.joinToString(" ")}")
+                    Log.i(TAG, "Using PROOT_LOADER: $prootLoaderPath")
                     
                     val processBuilder = ProcessBuilder(command)
+                    // Set PROOT_TMP_DIR to a writable directory for proot's temporary files
                     processBuilder.environment()["PROOT_TMP_DIR"] = prootTmpDir.absolutePath
+                    // Set PROOT_LOADER to the pre-built loader in native lib directory (has exec permission)
+                    // This bypasses proot's need to extract the loader to PROOT_TMP_DIR
+                    processBuilder.environment()["PROOT_LOADER"] = prootLoaderPath
                     processBuilder.redirectErrorStream(true)
                     
                     embeddedServerProcess = processBuilder.start()
