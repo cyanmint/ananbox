@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">Ananbox</string>
     <string name="title_settings">Settings</string>
-    <string name="title_activity_settings">SettingsActivity</string>
+    <string name="title_activity_main">Ananbox</string>
     <string name="rom_installer_title">Install rom</string>
     <string name="rom_installer_message">Please select the rootfs.tar.gz file on your phone</string>
     <string name="rom_installer_install">Select a file</string>
