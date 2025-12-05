@@ -201,8 +201,11 @@ Java_com_github_ananbox_Anbox_initRuntime(
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring proot_) {
-    char cmd[255];
-    char tmp_dir[sizeof(path) + 16];  // path + "/tmp" + null terminator with margin
+    // Command buffer needs space for: 'sh ' + path (255 max) + '/rootfs/run.sh ' + path (255 max) + ' ' + proot (PATH_MAX)
+    // This requires two path (255 bytes max) strings and one PATH_MAX-sized string plus the script command overhead
+    static const size_t CMD_PATH_COUNT = 3;  // path, path, proot in the command
+    static const size_t CMD_OVERHEAD = 32;   // "sh " + "/rootfs/run.sh " + spaces
+    char cmd[PATH_MAX * CMD_PATH_COUNT + CMD_OVERHEAD];
     if (fork() != 0) {
         return;
     }
@@ -210,17 +213,42 @@ Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     sigfillset(&signals_to_unblock);
     sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
     
-    // Set PROOT_TMP_DIR environment variable before starting the container
-    int tmp_len = snprintf(tmp_dir, sizeof(tmp_dir), "%s/tmp", path);
-    if (tmp_len > 0 && static_cast<size_t>(tmp_len) < sizeof(tmp_dir)) {
-        setenv("PROOT_TMP_DIR", tmp_dir, 1);
+    const char *proot = env->GetStringUTFChars(proot_, 0);
+    
+    // Extract the native library directory from the proot path
+    // proot path is like "/data/app/.../lib/arm64/libproot.so"
+    // We want the directory part which is executable (unlike filesDir/tmp which has noexec)
+    char native_lib_dir[PATH_MAX];
+    size_t proot_len = strlen(proot);
+    
+    // Validate the path length to prevent buffer overflow
+    if (proot_len >= PATH_MAX) {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "proot path too long");
+        env->ReleaseStringUTFChars(proot_, proot);
+        _exit(1);
     }
     
-    const char *proot = env->GetStringUTFChars(proot_, 0);
-    sprintf(cmd, "sh %s/rootfs/run.sh %s %s", path, path, proot);
+    // Use snprintf for safe string copying
+    snprintf(native_lib_dir, sizeof(native_lib_dir), "%s", proot);
+    char *last_slash = strrchr(native_lib_dir, '/');
+    if (last_slash != nullptr) {
+        *last_slash = '\0';  // Remove the filename, keep directory
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "Invalid proot path: no directory separator found");
+        env->ReleaseStringUTFChars(proot_, proot);
+        _exit(1);
+    }
+    
+    // Set PROOT_TMP_DIR to native library directory which has exec permission
+    // This is critical because proot needs to execute its loader from this directory
+    // The app's filesDir is mounted with noexec flag on modern Android
+    setenv("PROOT_TMP_DIR", native_lib_dir, 1);
+    
+    // Use snprintf for safe command string construction
+    snprintf(cmd, sizeof(cmd), "sh %s/rootfs/run.sh %s %s", path, path, proot);
     env->ReleaseStringUTFChars(proot_, proot);
     execl("/system/bin/sh", "sh", "-c", cmd, 0);
-    __android_log_print(ANDROID_LOG_ERROR, TAG, "proot excuted failed: %s", strerror(errno));
+    __android_log_print(ANDROID_LOG_ERROR, TAG, "proot executed failed: %s", strerror(errno));
  }
 extern "C"
 JNIEXPORT void JNICALL
@@ -493,7 +521,16 @@ int main(int argc, char* argv[]) {
     }
 
     if (startup_script.empty()) startup_script = rootfs_path + "/run.sh";
-    if (tmp_dir.empty()) tmp_dir = base_path + "/tmp";
+    // Use PROOT_TMP_DIR from environment if tmp_dir not explicitly set
+    // This allows the parent process (e.g., Android app) to specify an executable directory
+    if (tmp_dir.empty()) {
+        const char* env_tmp_dir = getenv("PROOT_TMP_DIR");
+        if (env_tmp_dir != nullptr && env_tmp_dir[0] != '\0') {
+            tmp_dir = env_tmp_dir;
+        } else {
+            tmp_dir = base_path + "/tmp";
+        }
+    }
     if (adb_address.empty()) adb_address = listen_address;
     
     if (!ensure_directory(tmp_dir)) {

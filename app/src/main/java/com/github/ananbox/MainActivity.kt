@@ -126,9 +126,21 @@ class MainActivity : AppCompatActivity() {
         // Start the embedded server process
         thread {
             try {
-                val serverPath = applicationInfo.nativeLibraryDir + "/libananbox-server.so"
+                // Use libanbox.so which is built as a PIE executable that can run standalone
+                val serverPath = applicationInfo.nativeLibraryDir + "/libanbox.so"
                 val prootPath = applicationInfo.nativeLibraryDir + "/libproot.so"
                 val basePath = filesDir.absolutePath
+                
+                // Ensure the server binary has execute permission
+                val serverFile = File(serverPath)
+                if (serverFile.exists() && !serverFile.canExecute()) {
+                    serverFile.setExecutable(true, true)
+                    Log.i(TAG, "Set execute permission on $serverPath")
+                }
+                
+                // Use nativeLibraryDir for PROOT_TMP_DIR since it's mounted with exec permission
+                // The app's filesDir is mounted with noexec, preventing proot's loader from being executed
+                val prootTmpDir = applicationInfo.nativeLibraryDir
                 
                 val command = mutableListOf(
                     serverPath,
@@ -140,13 +152,14 @@ class MainActivity : AppCompatActivity() {
                     "-h", mSurfaceView.height.toString(),
                     "-d", dpi.toString(),
                     "-A", "127.0.0.1",
-                    "-D", localAdbPort.toString()
+                    "-D", localAdbPort.toString(),
+                    "-t", prootTmpDir  // Explicitly pass tmp dir with exec permission
                 )
                 
                 Log.i(TAG, "Executing: ${command.joinToString(" ")}")
                 
                 val processBuilder = ProcessBuilder(command)
-                processBuilder.environment()["PROOT_TMP_DIR"] = filesDir.absolutePath + "/tmp"
+                processBuilder.environment()["PROOT_TMP_DIR"] = prootTmpDir
                 processBuilder.redirectErrorStream(true)
                 
                 embeddedServerProcess = processBuilder.start()
