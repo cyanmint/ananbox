@@ -1,7 +1,9 @@
 package com.github.ananbox
 
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.view.MenuItem
@@ -9,7 +11,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.preference.EditTextPreference
-import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
@@ -42,9 +43,9 @@ class SettingsActivity : AppCompatActivity() {
         }
         
         fun getConnectionMode(context: Context): String {
+            // Use saved connection mode preference
             return PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_connection_mode_key),
-                          MODE_LOCAL_JNI)
+                .getString(context.getString(R.string.settings_connection_mode_key), MODE_LOCAL_JNI)
                 ?: MODE_LOCAL_JNI
         }
         
@@ -74,22 +75,19 @@ class SettingsActivity : AppCompatActivity() {
         }
         
         fun getRemotePort(context: Context): Int {
-            val portStr = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_remote_port_key),
-                          context.getString(R.string.settings_remote_port_default))
-                ?: context.getString(R.string.settings_remote_port_default)
-            return try {
-                portStr.toInt()
-            } catch (e: NumberFormatException) {
-                5558
-            }
+            // Use remote ADB port for streaming as well
+            return getRemoteAdbPort(context)
         }
         
         fun getAdbPort(context: Context): Int {
+            return getRemoteAdbPort(context)
+        }
+        
+        fun getRemoteAdbPort(context: Context): Int {
             val portStr = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_adb_port_key),
-                          context.getString(R.string.settings_adb_port_default))
-                ?: context.getString(R.string.settings_adb_port_default)
+                .getString(context.getString(R.string.settings_remote_adb_port_key),
+                          context.getString(R.string.settings_remote_adb_port_default))
+                ?: context.getString(R.string.settings_remote_adb_port_default)
             return try {
                 portStr.toInt()
             } catch (e: NumberFormatException) {
@@ -120,57 +118,155 @@ class SettingsActivity : AppCompatActivity() {
                 5555
             }
         }
+        
+        fun getBaseDir(context: Context): String {
+            return PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_basedir_key),
+                          context.getString(R.string.settings_basedir_default))
+                ?: context.getString(R.string.settings_basedir_default)
+        }
     }
 
     class SettingsFragment: PreferenceFragmentCompat() {
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.preferences, rootKey)
 
-            val start = preferenceScreen.findPreference<Preference>(getString(R.string.settings_start_key))
-            val shutdown = preferenceScreen.findPreference<Preference>(getString(R.string.settings_shutdown_key))
-            val viewLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_logs_key))
-            val exportLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_export_logs_key))
-            @Suppress("UNUSED_VARIABLE")
-            val verboseMode = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_verbose_key))
+            // Local mode options
+            val localJniOption = preferenceScreen.findPreference<Preference>(getString(R.string.settings_local_jni_key))
+            val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
             
-            // Connection mode
-            val connectionMode = preferenceScreen.findPreference<ListPreference>(getString(R.string.settings_connection_mode_key))
+            // Remote mode toggles
+            val remoteStreamingToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_remote_streaming_key))
+            val remoteScrcpyToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_remote_scrcpy_key))
             
-            // Local server settings
+            // Local settings
             val localPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_port_key))
             val localAdbPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_adb_port_key))
+            val basedir = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_basedir_key))
             
-            // Remote server settings
+            // Remote settings
             val remoteAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_address_key))
-            val remotePort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_port_key))
-            val remoteConnect = preferenceScreen.findPreference<Preference>(getString(R.string.settings_remote_connect_key))
-            val adbPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_adb_port_key))
+            val remoteAdbPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_adb_port_key))
+            
+            // Settings group
+            @Suppress("UNUSED_VARIABLE")
+            val verboseMode = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_verbose_key))
+            val viewLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_logs_key))
+            val exportLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_export_logs_key))
+            val clearLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_clear_logs_key))
+            val about = preferenceScreen.findPreference<Preference>(getString(R.string.settings_about_key))
 
-            start?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+            // Handle local JNI option - on click, connect immediately
+            localJniOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                // Disable other toggles
+                localServerToggle?.isChecked = false
+                remoteStreamingToggle?.isChecked = false
+                remoteScrcpyToggle?.isChecked = false
+                
+                // Save connection mode preference
+                PreferenceManager.getDefaultSharedPreferences(requireContext())
+                    .edit()
+                    .putString(getString(R.string.settings_connection_mode_key), MODE_LOCAL_JNI)
+                    .apply()
+                
+                // Start container via JNI immediately
+                Toast.makeText(activity, getString(R.string.jni_container_starting), Toast.LENGTH_SHORT).show()
                 startActivity(Intent(activity, MainActivity::class.java))
                 true
             }
-
-            shutdown?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
-                activity?.finishAffinity()
-                Anbox.stopRuntime()
-                Anbox.stopContainer()
+            
+            // Handle local server toggle - runs in background
+            localServerToggle?.onPreferenceChangeListener = Preference.OnPreferenceChangeListener { _, newValue ->
+                val enabled = newValue as Boolean
+                if (enabled) {
+                    // Disable other toggles
+                    remoteStreamingToggle?.isChecked = false
+                    remoteScrcpyToggle?.isChecked = false
+                    
+                    // Save connection mode preference
+                    PreferenceManager.getDefaultSharedPreferences(requireContext())
+                        .edit()
+                        .putString(getString(R.string.settings_connection_mode_key), MODE_LOCAL_SERVER)
+                        .apply()
+                    
+                    // Start local server in background
+                    Toast.makeText(activity, getString(R.string.embedded_server_starting), Toast.LENGTH_SHORT).show()
+                    startActivity(Intent(activity, MainActivity::class.java))
+                } else {
+                    // Stop server
+                    Anbox.stopRuntime()
+                    Anbox.stopContainer()
+                    Toast.makeText(activity, getString(R.string.embedded_server_stopped), Toast.LENGTH_SHORT).show()
+                }
+                true
+            }
+            
+            // Handle remote streaming toggle
+            remoteStreamingToggle?.onPreferenceChangeListener = Preference.OnPreferenceChangeListener { _, newValue ->
+                val enabled = newValue as Boolean
+                if (enabled) {
+                    // Disable other toggles
+                    localServerToggle?.isChecked = false
+                    remoteScrcpyToggle?.isChecked = false
+                    
+                    // Save connection mode preference
+                    PreferenceManager.getDefaultSharedPreferences(requireContext())
+                        .edit()
+                        .putString(getString(R.string.settings_connection_mode_key), MODE_REMOTE_LEGACY)
+                        .apply()
+                    
+                    // Start streaming connection
+                    startActivity(Intent(activity, MainActivity::class.java))
+                } else {
+                    Toast.makeText(activity, getString(R.string.remote_disconnected), Toast.LENGTH_SHORT).show()
+                }
+                true
+            }
+            
+            // Handle remote scrcpy toggle
+            remoteScrcpyToggle?.onPreferenceChangeListener = Preference.OnPreferenceChangeListener { _, newValue ->
+                val enabled = newValue as Boolean
+                if (enabled) {
+                    // Disable other toggles
+                    localServerToggle?.isChecked = false
+                    remoteStreamingToggle?.isChecked = false
+                    
+                    // Save connection mode preference
+                    PreferenceManager.getDefaultSharedPreferences(requireContext())
+                        .edit()
+                        .putString(getString(R.string.settings_connection_mode_key), MODE_REMOTE_SCRCPY)
+                        .apply()
+                    
+                    // Start scrcpy connection
+                    startActivity(Intent(activity, MainActivity::class.java))
+                } else {
+                    Toast.makeText(activity, getString(R.string.scrcpy_disconnected), Toast.LENGTH_SHORT).show()
+                }
                 true
             }
 
+            // View logs
             viewLogs?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
                 startActivity(Intent(activity, LogViewActivity::class.java))
                 true
             }
 
+            // Export logs
             exportLogs?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
                 exportLogFiles()
                 true
             }
             
-            // Update connection mode summary with current value
-            connectionMode?.summaryProvider = Preference.SummaryProvider<ListPreference> { pref ->
-                pref.entry ?: getString(R.string.settings_connection_mode_summary)
+            // Clear logs
+            clearLogs?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                showClearLogsConfirmation()
+                true
+            }
+            
+            // About dialog
+            about?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                showAboutDialog()
+                true
             }
             
             // Update local server port summary
@@ -191,6 +287,15 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
             
+            // Update basedir summary
+            basedir?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+                if (pref.text.isNullOrEmpty()) {
+                    getString(R.string.settings_basedir_summary)
+                } else {
+                    pref.text
+                }
+            }
+            
             // Update remote address summary with current value
             remoteAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
                 if (pref.text.isNullOrEmpty()) {
@@ -200,39 +305,84 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
             
-            // Update remote port summary with current value
-            remotePort?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+            // Update remote ADB port summary with current value
+            remoteAdbPort?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
                 if (pref.text.isNullOrEmpty()) {
-                    getString(R.string.settings_remote_port_summary)
+                    getString(R.string.settings_remote_adb_port_summary)
                 } else {
                     "Port: ${pref.text}"
                 }
             }
-            
-            // Update ADB port summary with current value
-            adbPort?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
-                if (pref.text.isNullOrEmpty()) {
-                    getString(R.string.settings_adb_port_summary)
-                } else {
-                    "Port: ${pref.text}"
+        }
+        
+        private fun showClearLogsConfirmation() {
+            val context = activity ?: return
+            AlertDialog.Builder(context)
+                .setTitle(R.string.settings_clear_logs_confirm_title)
+                .setMessage(R.string.settings_clear_logs_confirm_message)
+                .setPositiveButton(R.string.ok) { _, _ ->
+                    clearLogFiles()
                 }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+        
+        private fun clearLogFiles() {
+            val context = activity ?: return
+            val filesDir = context.filesDir
+            
+            try {
+                var cleared = false
+                
+                // Clear proot.log
+                val prootLogFile = File(filesDir, "proot.log")
+                if (prootLogFile.exists() && prootLogFile.delete()) {
+                    cleared = true
+                }
+                
+                // Clear container.log
+                val containerLogFile = File(filesDir, "container.log")
+                if (containerLogFile.exists() && containerLogFile.delete()) {
+                    cleared = true
+                }
+                
+                // Clear server.log
+                val serverLogFile = File(filesDir, "server.log")
+                if (serverLogFile.exists() && serverLogFile.delete()) {
+                    cleared = true
+                }
+                
+                // Clear system.log from rootfs
+                val systemLogFile = File(filesDir, "rootfs/data/system.log")
+                if (systemLogFile.exists() && systemLogFile.delete()) {
+                    cleared = true
+                }
+                
+                if (cleared) {
+                    Toast.makeText(context, R.string.settings_clear_logs_success, Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, R.string.settings_logs_empty, Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear logs", e)
+                Toast.makeText(context, R.string.settings_clear_logs_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+        
+        private fun showAboutDialog() {
+            val context = activity ?: return
+            
+            val versionName = try {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            } catch (e: PackageManager.NameNotFoundException) {
+                "Unknown"
             }
             
-            // Handle connect button
-            remoteConnect?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
-                val context = activity ?: return@OnPreferenceClickListener true
-                val address = getRemoteAddress(context)
-                val port = getRemotePort(context)
-                
-                Toast.makeText(context, 
-                    getString(R.string.remote_connecting, address, port.toString()),
-                    Toast.LENGTH_SHORT).show()
-                
-                // Start MainActivity which will connect to remote server
-                val intent = Intent(activity, MainActivity::class.java)
-                startActivity(intent)
-                true
-            }
+            AlertDialog.Builder(context)
+                .setTitle(R.string.about_dialog_title)
+                .setMessage(getString(R.string.about_dialog_message, versionName))
+                .setPositiveButton(R.string.ok, null)
+                .show()
         }
 
         private fun exportLogFiles() {
@@ -287,10 +437,10 @@ class SettingsActivity : AppCompatActivity() {
                             settingsInfo.append("Verbose mode: $verboseEnabled\n")
                             settingsInfo.append("Connection mode: $connectionMode\n")
                             settingsInfo.append("Remote address: ${getRemoteAddress(context)}\n")
-                            settingsInfo.append("Remote port: ${getRemotePort(context)}\n")
-                            settingsInfo.append("ADB port: ${getAdbPort(context)}\n")
+                            settingsInfo.append("Remote ADB port: ${getRemoteAdbPort(context)}\n")
                             settingsInfo.append("Local server port: ${getLocalServerPort(context)}\n")
                             settingsInfo.append("Local ADB port: ${getLocalAdbPort(context)}\n")
+                            settingsInfo.append("Base directory: ${getBaseDir(context)}\n")
                             addStringToTar(tarOs, settingsInfo.toString(), "settings.txt")
                             
                             tarOs.finish()

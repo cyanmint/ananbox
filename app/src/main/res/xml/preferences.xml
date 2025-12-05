@@ -1,47 +1,22 @@
 <PreferenceScreen
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <Preference
-        app:key="@string/settings_start_key"
-        app:title="@string/settings_start_title"
-        app:summary="@string/settings_start_summary"/>
-
-    <SwitchPreferenceCompat
-        app:key="@string/settings_verbose_key"
-        app:title="@string/settings_verbose_title"
-        app:summary="@string/settings_verbose_summary"
-        app:defaultValue="false"/>
-
-    <Preference
-        app:key="@string/settings_logs_key"
-        app:title="@string/settings_logs_title"
-        app:summary="@string/settings_logs_summary"/>
-
-    <Preference
-        app:key="@string/settings_export_logs_key"
-        app:title="@string/settings_export_logs_title"
-        app:summary="@string/settings_export_logs_summary"/>
-
-    <Preference
-        app:key="@string/settings_shutdown_key"
-        app:title="@string/settings_shutdown_title"
-        app:summary="@string/settings_shutdown_summary"/>
-
+    <!-- Local Mode Group (not foldable) -->
     <PreferenceCategory
-        app:title="@string/settings_connection_category">
-
-        <ListPreference
-            app:key="@string/settings_connection_mode_key"
-            app:title="@string/settings_connection_mode_title"
-            app:summary="@string/settings_connection_mode_summary"
-            app:entries="@array/connection_mode_entries"
-            app:entryValues="@array/connection_mode_values"
-            app:defaultValue="@string/connection_mode_local_jni_value"/>
-
-    </PreferenceCategory>
-
-    <PreferenceCategory
+        app:key="local_mode_category"
         app:title="@string/settings_local_category">
+
+        <Preference
+            app:key="@string/settings_local_jni_key"
+            app:title="@string/settings_local_jni_title"
+            app:summary="@string/settings_local_jni_summary"/>
+
+        <SwitchPreferenceCompat
+            app:key="@string/settings_local_server_key"
+            app:title="@string/settings_local_server_title"
+            app:summaryOn="@string/settings_local_server_summary_on"
+            app:summaryOff="@string/settings_local_server_summary_off"
+            app:defaultValue="false"/>
 
         <EditTextPreference
             app:key="@string/settings_local_port_key"
@@ -55,10 +30,32 @@
             app:summary="@string/settings_local_adb_port_summary"
             app:defaultValue="@string/settings_local_adb_port_default"/>
 
+        <EditTextPreference
+            app:key="@string/settings_basedir_key"
+            app:title="@string/settings_basedir_title"
+            app:summary="@string/settings_basedir_summary"
+            app:defaultValue="@string/settings_basedir_default"/>
+
     </PreferenceCategory>
 
+    <!-- Remote Mode Group (not foldable) -->
     <PreferenceCategory
+        app:key="remote_mode_category"
         app:title="@string/settings_remote_category">
+
+        <SwitchPreferenceCompat
+            app:key="@string/settings_remote_streaming_key"
+            app:title="@string/settings_remote_streaming_title"
+            app:summaryOn="@string/settings_remote_streaming_summary_on"
+            app:summaryOff="@string/settings_remote_streaming_summary_off"
+            app:defaultValue="false"/>
+
+        <SwitchPreferenceCompat
+            app:key="@string/settings_remote_scrcpy_key"
+            app:title="@string/settings_remote_scrcpy_title"
+            app:summaryOn="@string/settings_remote_scrcpy_summary_on"
+            app:summaryOff="@string/settings_remote_scrcpy_summary_off"
+            app:defaultValue="false"/>
 
         <EditTextPreference
             app:key="@string/settings_remote_address_key"
@@ -67,21 +64,44 @@
             app:defaultValue="@string/settings_remote_address_default"/>
 
         <EditTextPreference
-            app:key="@string/settings_remote_port_key"
-            app:title="@string/settings_remote_port_title"
-            app:summary="@string/settings_remote_port_summary"
-            app:defaultValue="@string/settings_remote_port_default"/>
+            app:key="@string/settings_remote_adb_port_key"
+            app:title="@string/settings_remote_adb_port_title"
+            app:summary="@string/settings_remote_adb_port_summary"
+            app:defaultValue="@string/settings_remote_adb_port_default"/>
 
-        <EditTextPreference
-            app:key="@string/settings_adb_port_key"
-            app:title="@string/settings_adb_port_title"
-            app:summary="@string/settings_adb_port_summary"
-            app:defaultValue="@string/settings_adb_port_default"/>
+    </PreferenceCategory>
+
+    <!-- Settings Group (foldable) -->
+    <PreferenceCategory
+        app:key="settings_category"
+        app:title="@string/settings_general_category"
+        app:initialExpandedChildrenCount="2">
+
+        <SwitchPreferenceCompat
+            app:key="@string/settings_verbose_key"
+            app:title="@string/settings_verbose_title"
+            app:summary="@string/settings_verbose_summary"
+            app:defaultValue="false"/>
 
         <Preference
-            app:key="@string/settings_remote_connect_key"
-            app:title="@string/settings_remote_connect_title"
-            app:summary="@string/settings_remote_connect_summary"/>
+            app:key="@string/settings_logs_key"
+            app:title="@string/settings_logs_title"
+            app:summary="@string/settings_logs_summary"/>
+
+        <Preference
+            app:key="@string/settings_export_logs_key"
+            app:title="@string/settings_export_logs_title"
+            app:summary="@string/settings_export_logs_summary"/>
+
+        <Preference
+            app:key="@string/settings_clear_logs_key"
+            app:title="@string/settings_clear_logs_title"
+            app:summary="@string/settings_clear_logs_summary"/>
+
+        <Preference
+            app:key="@string/settings_about_key"
+            app:title="@string/settings_about_title"
+            app:summary="@string/settings_about_summary"/>
 
     </PreferenceCategory>
 

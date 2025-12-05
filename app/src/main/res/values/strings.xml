@@ -2,12 +2,73 @@
     <string name="app_name">Ananbox</string>
     <string name="title_settings">Settings</string>
     <string name="title_activity_settings">SettingsActivity</string>
-    <string name="settings_start_key">start</string>
-    <string name="settings_start_title">Start</string>
-    <string name="settings_start_summary">Start Ananbox container</string>
-    <string name="settings_shutdown_key">shutdown</string>
-    <string name="settings_shutdown_title">Shutdown</string>
-    <string name="settings_shutdown_summary">Shutdown Ananbox immediately</string>
+    <string name="rom_installer_title">Install rom</string>
+    <string name="rom_installer_message">Please select the rootfs.tar.gz file on your phone</string>
+    <string name="rom_installer_install">Select a file</string>
+    <string name="rom_installer_extracting_title">Extracting</string>
+    <string name="rom_installer_extracting_msg">Extracting rom file..</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    
+    <!-- Local Mode Settings (foldable group) -->
+    <string name="settings_local_category">Local Mode</string>
+    <string name="settings_local_jni_key">local_jni_toggle</string>
+    <string name="settings_local_jni_title">Start via JNI</string>
+    <string name="settings_local_jni_summary">Start container directly and show immediately</string>
+    <string name="settings_local_jni_summary_on">Container running via JNI</string>
+    <string name="settings_local_jni_summary_off">Toggle on to start container via JNI</string>
+    <string name="settings_local_server_key">local_server_toggle</string>
+    <string name="settings_local_server_title">Start via Local Server</string>
+    <string name="settings_local_server_summary">Start container via local standalone server in background</string>
+    <string name="settings_local_server_summary_on">Local server running in background</string>
+    <string name="settings_local_server_summary_off">Toggle on to start local server</string>
+    <string name="settings_local_port_key">local_server_port</string>
+    <string name="settings_local_port_title">Local Server Port</string>
+    <string name="settings_local_port_summary">Port for local server streaming (default: 5558)</string>
+    <string name="settings_local_port_default">5558</string>
+    <string name="settings_local_adb_port_key">local_adb_port</string>
+    <string name="settings_local_adb_port_title">Local ADB Port</string>
+    <string name="settings_local_adb_port_summary">Port for ADB forwarding (default: 5555, 0 to disable)</string>
+    <string name="settings_local_adb_port_default">5555</string>
+    <string name="settings_basedir_key">basedir</string>
+    <string name="settings_basedir_title">Base Directory</string>
+    <string name="settings_basedir_summary">Base directory for Ananbox data</string>
+    <string name="settings_basedir_default">/data/user/0/com.github.ananbox</string>
+    <string name="embedded_server_starting">Starting local server…</string>
+    <string name="embedded_server_started">Local server started on port %1$d</string>
+    <string name="embedded_server_stopped">Local server stopped</string>
+    <string name="embedded_server_failed">Failed to start local server: %1$s</string>
+    <string name="jni_container_starting">Starting container via JNI…</string>
+    <string name="jni_container_started">Container started via JNI</string>
+    <string name="jni_container_stopped">Container stopped</string>
+    <string name="jni_container_failed">Failed to start container: %1$s</string>
+    
+    <!-- Remote Mode Settings (foldable group) -->
+    <string name="settings_remote_category">Remote Mode</string>
+    <string name="settings_remote_streaming_key">remote_streaming_toggle</string>
+    <string name="settings_remote_streaming_title">Use Streaming</string>
+    <string name="settings_remote_streaming_summary">Connect to remote server via streaming</string>
+    <string name="settings_remote_streaming_summary_on">Streaming connection active</string>
+    <string name="settings_remote_streaming_summary_off">Toggle on to connect via streaming</string>
+    <string name="settings_remote_scrcpy_key">remote_scrcpy_toggle</string>
+    <string name="settings_remote_scrcpy_title">Use scrcpy via ADB</string>
+    <string name="settings_remote_scrcpy_summary">Connect to remote server via scrcpy over ADB</string>
+    <string name="settings_remote_scrcpy_summary_on">scrcpy connection active</string>
+    <string name="settings_remote_scrcpy_summary_off">Toggle on to connect via scrcpy</string>
+    <string name="settings_remote_address_key">remote_address</string>
+    <string name="settings_remote_address_title">Remote Server Address</string>
+    <string name="settings_remote_address_summary">IP address of the remote Ananbox server</string>
+    <string name="settings_remote_address_default">192.168.1.100</string>
+    <string name="settings_remote_adb_port_key">remote_adb_port</string>
+    <string name="settings_remote_adb_port_title">Remote ADB Port</string>
+    <string name="settings_remote_adb_port_summary">Port for ADB/scrcpy connection (default: 5555)</string>
+    <string name="settings_remote_adb_port_default">5555</string>
+    
+    <!-- Settings group -->
+    <string name="settings_general_category">Settings</string>
+    <string name="settings_verbose_key">verbose_mode</string>
+    <string name="settings_verbose_title">Verbose Mode</string>
+    <string name="settings_verbose_summary">Enable detailed logging for debugging</string>
     <string name="settings_logs_key">view_logs</string>
     <string name="settings_logs_title">View Logs</string>
     <string name="settings_logs_summary">View system and proot logs</string>
@@ -15,62 +76,18 @@
     <string name="settings_export_logs_key">export_logs</string>
     <string name="settings_export_logs_title">Export Logs</string>
     <string name="settings_export_logs_summary">Share diagnostic logs as tarball</string>
-    <string name="settings_verbose_key">verbose_mode</string>
-    <string name="settings_verbose_title">Verbose Mode</string>
-    <string name="settings_verbose_summary">Enable detailed logging for debugging</string>
-    <string name="rom_installer_title">Install rom</string>
-    <string name="rom_installer_message">Please select the rootfs.tar.gz file on your phone</string>
-    <string name="rom_installer_install">Select a file</string>
-    <string name="rom_installer_extracting_title">Extracting</string>
-    <string name="rom_installer_extracting_msg">Extracting rom file..</string>
-    <string name="cancel">Cancel</string>
-    
-    <!-- Connection Mode Settings -->
-    <string name="settings_connection_category">Connection Mode</string>
-    <string name="settings_connection_mode_key">connection_mode</string>
-    <string name="settings_connection_mode_title">Connection Mode</string>
-    <string name="settings_connection_mode_summary">Choose how to run Ananbox</string>
-    <string name="connection_mode_local_jni">Local - Direct (JNI)</string>
-    <string name="connection_mode_local_server">Local - Embedded Server</string>
-    <string name="connection_mode_remote_legacy">Remote - Legacy Streaming</string>
-    <string name="connection_mode_remote_scrcpy">Remote - scrcpy via ADB</string>
-    <string name="connection_mode_local_jni_value">local_jni</string>
-    <string name="connection_mode_local_server_value">local_server</string>
-    <string name="connection_mode_remote_legacy_value">remote_legacy</string>
-    <string name="connection_mode_remote_scrcpy_value">remote_scrcpy</string>
-    
-    <!-- Local Server Settings -->
-    <string name="settings_local_category">Local Server Options</string>
-    <string name="settings_local_port_key">local_server_port</string>
-    <string name="settings_local_port_title">Local Server Port</string>
-    <string name="settings_local_port_summary">Port for embedded server streaming (default: 5558)</string>
-    <string name="settings_local_port_default">5558</string>
-    <string name="settings_local_adb_port_key">local_adb_port</string>
-    <string name="settings_local_adb_port_title">Local ADB Port</string>
-    <string name="settings_local_adb_port_summary">Port for ADB forwarding (default: 5555, 0 to disable)</string>
-    <string name="settings_local_adb_port_default">5555</string>
-    <string name="embedded_server_starting">Starting embedded server…</string>
-    <string name="embedded_server_started">Embedded server started on port %1$d</string>
-    <string name="embedded_server_stopped">Embedded server stopped</string>
-    <string name="embedded_server_failed">Failed to start embedded server: %1$s</string>
-    
-    <!-- Remote Server Settings -->
-    <string name="settings_remote_category">Remote Server Options</string>
-    <string name="settings_remote_address_key">remote_address</string>
-    <string name="settings_remote_address_title">Server Address</string>
-    <string name="settings_remote_address_summary">IP address of the remote Ananbox server</string>
-    <string name="settings_remote_address_default">192.168.1.100</string>
-    <string name="settings_remote_port_key">remote_port</string>
-    <string name="settings_remote_port_title">Server Port</string>
-    <string name="settings_remote_port_summary">Port number of the remote server (default: 5558)</string>
-    <string name="settings_remote_port_default">5558</string>
-    <string name="settings_remote_connect_key">remote_connect</string>
-    <string name="settings_remote_connect_title">Connect Now</string>
-    <string name="settings_remote_connect_summary">Connect to the configured remote server</string>
-    <string name="settings_adb_port_key">adb_port</string>
-    <string name="settings_adb_port_title">ADB Port</string>
-    <string name="settings_adb_port_summary">Port number for ADB/scrcpy connection (default: 5555)</string>
-    <string name="settings_adb_port_default">5555</string>
+    <string name="settings_clear_logs_key">clear_logs</string>
+    <string name="settings_clear_logs_title">Clear Logs</string>
+    <string name="settings_clear_logs_summary">Delete all log files</string>
+    <string name="settings_clear_logs_confirm_title">Clear Logs?</string>
+    <string name="settings_clear_logs_confirm_message">This will delete all log files. This action cannot be undone.</string>
+    <string name="settings_clear_logs_success">Logs cleared successfully</string>
+    <string name="settings_clear_logs_failed">Failed to clear logs</string>
+    <string name="settings_about_key">about</string>
+    <string name="settings_about_title">About</string>
+    <string name="settings_about_summary">App info and copyright</string>
+    <string name="about_dialog_title">About Ananbox</string>
+    <string name="about_dialog_message">Ananbox v%1$s\n\nAn Android container solution.\n\n© 2024 Ananbox Project\nLicensed under Apache License 2.0</string>
     
     <!-- Connection Status -->
     <string name="remote_connecting">Connecting to %1$s:%2$s…</string>
@@ -86,4 +103,15 @@
     <string name="scrcpy_connected">Connected via scrcpy: %1$s (%2$dx%3$d)</string>
     <string name="scrcpy_disconnected">scrcpy disconnected</string>
     <string name="scrcpy_error">scrcpy error: %1$s</string>
+    
+    <!-- Legacy keys for backward compatibility -->
+    <string name="settings_connection_mode_key">connection_mode</string>
+    <string name="connection_mode_local_jni">Local - Direct (JNI)</string>
+    <string name="connection_mode_local_server">Local - Background Server</string>
+    <string name="connection_mode_remote_legacy">Remote - Streaming</string>
+    <string name="connection_mode_remote_scrcpy">Remote - scrcpy via ADB</string>
+    <string name="connection_mode_local_jni_value">local_jni</string>
+    <string name="connection_mode_local_server_value">local_server</string>
+    <string name="connection_mode_remote_legacy_value">remote_legacy</string>
+    <string name="connection_mode_remote_scrcpy_value">remote_scrcpy</string>
 </resources>
