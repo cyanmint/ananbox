@@ -1,6 +1,8 @@
 package com.github.ananbox
 
+import android.app.Activity
 import android.app.AlertDialog
+import android.app.ProgressDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -15,6 +17,7 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
 import androidx.preference.SwitchPreferenceCompat
+import java.io.BufferedInputStream
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
@@ -22,14 +25,22 @@ import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
+import kotlin.concurrent.thread
 
+@Suppress("DEPRECATION")
 class SettingsActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "SettingsActivity"
+        private const val ROOTFS_INSTALL_REQUEST_CODE = 100
+        
+        // Unix permission bit for owner execute (octal 0100)
+        private const val OWNER_EXECUTE_PERMISSION = 0b001_000_000
         
         // Connection mode constants
         const val MODE_LOCAL_JNI = "local_jni"
@@ -68,21 +79,32 @@ class SettingsActivity : AppCompatActivity() {
         }
         
         fun getRemoteAddress(context: Context): String {
-            return PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_remote_address_key), 
-                          context.getString(R.string.settings_remote_address_default)) 
-                ?: context.getString(R.string.settings_remote_address_default)
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_remote_streaming_address_key), 
+                          context.getString(R.string.settings_remote_streaming_address_default)) 
+                ?: context.getString(R.string.settings_remote_streaming_address_default)
+            // Parse address from address:port format
+            return if (addressPort.contains(":")) {
+                addressPort.substringBefore(":")
+            } else {
+                addressPort
+            }
         }
         
         fun getRemotePort(context: Context): Int {
-            val portStr = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_remote_server_port_key),
-                          context.getString(R.string.settings_remote_server_port_default))
-                ?: context.getString(R.string.settings_remote_server_port_default)
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_remote_streaming_address_key),
+                          context.getString(R.string.settings_remote_streaming_address_default))
+                ?: context.getString(R.string.settings_remote_streaming_address_default)
+            // Parse port from address:port format
             return try {
-                portStr.toInt()
+                if (addressPort.contains(":")) {
+                    addressPort.substringAfter(":").toInt()
+                } else {
+                    15558  // Default port
+                }
             } catch (e: NumberFormatException) {
-                5558
+                15558
             }
         }
         
@@ -90,39 +112,97 @@ class SettingsActivity : AppCompatActivity() {
             return getRemoteAdbPort(context)
         }
         
+        fun getRemoteAdbAddress(context: Context): String {
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_remote_adb_address_key),
+                          context.getString(R.string.settings_remote_adb_address_default))
+                ?: context.getString(R.string.settings_remote_adb_address_default)
+            // Parse address from address:port format
+            return if (addressPort.contains(":")) {
+                addressPort.substringBefore(":")
+            } else {
+                addressPort
+            }
+        }
+        
         fun getRemoteAdbPort(context: Context): Int {
-            val portStr = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_remote_adb_port_key),
-                          context.getString(R.string.settings_remote_adb_port_default))
-                ?: context.getString(R.string.settings_remote_adb_port_default)
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_remote_adb_address_key),
+                          context.getString(R.string.settings_remote_adb_address_default))
+                ?: context.getString(R.string.settings_remote_adb_address_default)
+            // Parse port from address:port format
             return try {
-                portStr.toInt()
+                if (addressPort.contains(":")) {
+                    addressPort.substringAfter(":").toInt()
+                } else {
+                    15555  // Default port
+                }
             } catch (e: NumberFormatException) {
-                5555
+                15555
+            }
+        }
+        
+        fun getLocalServerAddress(context: Context): String {
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_local_port_key),
+                          context.getString(R.string.settings_local_port_default))
+                ?: context.getString(R.string.settings_local_port_default)
+            // Parse address from address:port format
+            return if (addressPort.contains(":")) {
+                addressPort.substringBefore(":")
+            } else {
+                "127.0.0.1"  // Default local address
             }
         }
         
         fun getLocalServerPort(context: Context): Int {
-            val portStr = PreferenceManager.getDefaultSharedPreferences(context)
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
                 .getString(context.getString(R.string.settings_local_port_key),
                           context.getString(R.string.settings_local_port_default))
                 ?: context.getString(R.string.settings_local_port_default)
+            // Parse port from address:port format
             return try {
-                portStr.toInt()
+                if (addressPort.contains(":")) {
+                    addressPort.substringAfter(":").toInt()
+                } else {
+                    15558  // Default port
+                }
             } catch (e: NumberFormatException) {
-                5558
+                15558
+            }
+        }
+        
+        fun getLocalAdbAddress(context: Context): String {
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_local_adb_port_key),
+                          context.getString(R.string.settings_local_adb_port_default))
+                ?: context.getString(R.string.settings_local_adb_port_default)
+            // Parse address from address:port format
+            return if (addressPort.isEmpty()) {
+                ""  // Disabled
+            } else if (addressPort.contains(":")) {
+                addressPort.substringBefore(":")
+            } else {
+                "127.0.0.1"  // Default local address
             }
         }
         
         fun getLocalAdbPort(context: Context): Int {
-            val portStr = PreferenceManager.getDefaultSharedPreferences(context)
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
                 .getString(context.getString(R.string.settings_local_adb_port_key),
                           context.getString(R.string.settings_local_adb_port_default))
                 ?: context.getString(R.string.settings_local_adb_port_default)
+            // Parse port from address:port format (empty = disabled)
             return try {
-                portStr.toInt()
+                if (addressPort.isEmpty()) {
+                    0  // Disabled
+                } else if (addressPort.contains(":")) {
+                    addressPort.substringAfter(":").toInt()
+                } else {
+                    15555  // Default port
+                }
             } catch (e: NumberFormatException) {
-                5555
+                15555
             }
         }
         
@@ -148,14 +228,13 @@ class SettingsActivity : AppCompatActivity() {
             val remoteScrcpyOption = preferenceScreen.findPreference<Preference>(getString(R.string.settings_remote_scrcpy_key))
             
             // Local settings
-            val localPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_port_key))
-            val localAdbPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_adb_port_key))
+            val localServerAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_port_key))
+            val localAdbAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_adb_port_key))
             val basedir = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_basedir_key))
             
             // Remote settings
-            val remoteAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_address_key))
-            val remoteServerPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_server_port_key))
-            val remoteAdbPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_adb_port_key))
+            val remoteStreamingAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_streaming_address_key))
+            val remoteAdbAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_adb_address_key))
             
             // Settings group
             @Suppress("UNUSED_VARIABLE")
@@ -194,8 +273,40 @@ class SettingsActivity : AppCompatActivity() {
             localServerToggle?.onPreferenceChangeListener = Preference.OnPreferenceChangeListener { _, newValue ->
                 val enabled = newValue as Boolean
                 if (enabled) {
+                    val context = requireContext()
+                    val baseDir = getBaseDir(context)
+                    val rootfsDir = File(baseDir, "rootfs")
+                    
+                    // Check if rootfs exists, if not prompt to install
+                    if (!rootfsDir.exists()) {
+                        // Show rom installer dialog
+                        AlertDialog.Builder(context)
+                            .setTitle(R.string.rom_installer_title)
+                            .setMessage(R.string.rom_installer_message)
+                            .setPositiveButton(R.string.rom_installer_install) { _, _ ->
+                                // Launch file picker for rootfs
+                                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                    addCategory(Intent.CATEGORY_OPENABLE)
+                                    type = "*/*"
+                                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                                        "application/gzip",
+                                        "application/x-gzip",
+                                        "application/x-compressed-tar"
+                                    ))
+                                }
+                                startActivityForResult(intent, ROOTFS_INSTALL_REQUEST_CODE)
+                            }
+                            .setNegativeButton(R.string.cancel) { _, _ ->
+                                // Disable the toggle since rootfs is not available
+                                localServerToggle?.isChecked = false
+                            }
+                            .setCancelable(false)
+                            .show()
+                        return@OnPreferenceChangeListener false  // Don't toggle yet
+                    }
+                    
                     // Save connection mode preference
-                    PreferenceManager.getDefaultSharedPreferences(requireContext())
+                    PreferenceManager.getDefaultSharedPreferences(context)
                         .edit()
                         .putString(getString(R.string.settings_connection_mode_key), MODE_LOCAL_SERVER)
                         .apply()
@@ -269,21 +380,21 @@ class SettingsActivity : AppCompatActivity() {
                 true
             }
             
-            // Update local server port summary
-            localPort?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+            // Update local server address summary
+            localServerAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
                 if (pref.text.isNullOrEmpty()) {
                     getString(R.string.settings_local_port_summary)
                 } else {
-                    "Port: ${pref.text}"
+                    pref.text
                 }
             }
             
-            // Update local ADB port summary
-            localAdbPort?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+            // Update local ADB address summary
+            localAdbAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
                 if (pref.text.isNullOrEmpty()) {
                     getString(R.string.settings_local_adb_port_summary)
                 } else {
-                    if (pref.text == "0") "Disabled" else "Port: ${pref.text}"
+                    if (pref.text.isNullOrEmpty()) "Disabled" else pref.text
                 }
             }
             
@@ -296,30 +407,21 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
             
-            // Update remote address summary with current value
-            remoteAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+            // Update remote streaming address summary with current value
+            remoteStreamingAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
                 if (pref.text.isNullOrEmpty()) {
-                    getString(R.string.settings_remote_address_summary)
+                    getString(R.string.settings_remote_streaming_address_summary)
                 } else {
                     pref.text
                 }
             }
             
-            // Update remote server port summary with current value
-            remoteServerPort?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+            // Update remote ADB address summary with current value
+            remoteAdbAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
                 if (pref.text.isNullOrEmpty()) {
-                    getString(R.string.settings_remote_server_port_summary)
+                    getString(R.string.settings_remote_adb_address_summary)
                 } else {
-                    "Port: ${pref.text}"
-                }
-            }
-            
-            // Update remote ADB port summary with current value
-            remoteAdbPort?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
-                if (pref.text.isNullOrEmpty()) {
-                    getString(R.string.settings_remote_adb_port_summary)
-                } else {
-                    "Port: ${pref.text}"
+                    pref.text
                 }
             }
         }
@@ -695,6 +797,165 @@ class SettingsActivity : AppCompatActivity() {
                 putExtra(Intent.EXTRA_TEXT, logContent.toString())
             }
             startActivity(Intent.createChooser(shareIntent, "Export Logs"))
+        }
+        
+        @Deprecated("Deprecated in Java")
+        override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+            super.onActivityResult(requestCode, resultCode, data)
+            if (requestCode == ROOTFS_INSTALL_REQUEST_CODE) {
+                if (resultCode != Activity.RESULT_OK || data == null) {
+                    // User cancelled, disable local server toggle
+                    val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
+                    localServerToggle?.isChecked = false
+                    return
+                }
+                val uri = data.data
+                if (uri != null) {
+                    val context = requireContext()
+                    val baseDir = getBaseDir(context)
+                    
+                    val progressDialog = ProgressDialog(context).apply {
+                        setTitle(getString(R.string.rom_installer_extracting_title))
+                        setMessage(getString(R.string.rom_installer_extracting_msg))
+                        setProgressStyle(ProgressDialog.STYLE_SPINNER)
+                        setCanceledOnTouchOutside(false)
+                        show()
+                    }
+                    
+                    thread {
+                        try {
+                            val inputStream = context.contentResolver.openInputStream(uri)
+                            if (inputStream != null) {
+                                val destDir = File(baseDir)
+                                destDir.mkdirs()
+                                extractTarGz(inputStream, destDir)
+                                inputStream.close()
+                                ensureRequiredDirectories(destDir)
+                                
+                                activity?.runOnUiThread {
+                                    progressDialog.dismiss()
+                                    // Now enable the toggle and save preference
+                                    val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
+                                    localServerToggle?.isChecked = true
+                                    
+                                    PreferenceManager.getDefaultSharedPreferences(context)
+                                        .edit()
+                                        .putString(getString(R.string.settings_connection_mode_key), MODE_LOCAL_SERVER)
+                                        .apply()
+                                    
+                                    Toast.makeText(context, getString(R.string.embedded_server_starting), Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                activity?.runOnUiThread {
+                                    progressDialog.dismiss()
+                                    Toast.makeText(context, "Failed to open file", Toast.LENGTH_SHORT).show()
+                                    val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
+                                    localServerToggle?.isChecked = false
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to extract rootfs", e)
+                            activity?.runOnUiThread {
+                                progressDialog.dismiss()
+                                Toast.makeText(context, "Failed to extract: ${e.message}", Toast.LENGTH_LONG).show()
+                                val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
+                                localServerToggle?.isChecked = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        private fun ensureRequiredDirectories(baseDir: File) {
+            // Create tmp directory for proot (PROOT_TMP_DIR)
+            val tmpDir = File(baseDir, "tmp")
+            if (!tmpDir.exists()) {
+                tmpDir.mkdirs()
+                Log.i(TAG, "Created tmp directory: ${tmpDir.absolutePath}")
+            }
+            
+            // Create mnt/user/0 directory for storage binding
+            val mntUserDir = File(baseDir, "rootfs/mnt/user/0")
+            if (!mntUserDir.exists()) {
+                mntUserDir.mkdirs()
+                Log.i(TAG, "Created mnt/user/0 directory: ${mntUserDir.absolutePath}")
+            }
+        }
+        
+        private fun extractTarGz(inputStream: java.io.InputStream, destDir: File) {
+            // Extract to rootfs subdirectory since tar.gz contains /system directly
+            val rootfsDir = File(destDir, "rootfs")
+            rootfsDir.mkdirs()
+            val rootfsCanonicalPath = rootfsDir.canonicalPath
+
+            GZIPInputStream(BufferedInputStream(inputStream)).use { gzipInputStream ->
+                TarArchiveInputStream(gzipInputStream).use { tarInputStream ->
+                    var entry = tarInputStream.nextTarEntry
+                    while (entry != null) {
+                        val destFile = File(rootfsDir, entry.name)
+                        
+                        // Validate path to prevent path traversal attacks
+                        if (!destFile.canonicalPath.startsWith(rootfsCanonicalPath)) {
+                            Log.w(TAG, "Skipping entry outside destination: ${entry.name}")
+                            entry = tarInputStream.nextTarEntry
+                            continue
+                        }
+                        
+                        if (entry.isDirectory) {
+                            destFile.mkdirs()
+                        } else {
+                            destFile.parentFile?.mkdirs()
+                            if (entry.isSymbolicLink) {
+                                // Handle symbolic links with validation
+                                val linkTarget = entry.linkName
+                                
+                                // Validate symlink target to prevent escape attacks
+                                val isAbsolute = linkTarget.startsWith("/")
+                                val wouldEscape = if (isAbsolute) {
+                                    false  // Allow absolute symlinks as proot handles them
+                                } else {
+                                    var currentPath: File? = destFile.parentFile
+                                    for (component in linkTarget.split("/")) {
+                                        when (component) {
+                                            ".." -> currentPath = currentPath?.parentFile
+                                            ".", "" -> { /* ignore */ }
+                                            else -> currentPath = currentPath?.let { File(it, component) }
+                                        }
+                                    }
+                                    currentPath?.let { 
+                                        !it.absolutePath.startsWith(rootfsCanonicalPath) 
+                                    } ?: true
+                                }
+                                
+                                if (wouldEscape) {
+                                    Log.w(TAG, "Skipping unsafe symlink: ${destFile.path} -> $linkTarget")
+                                } else {
+                                    try {
+                                        java.nio.file.Files.deleteIfExists(destFile.toPath())
+                                        java.nio.file.Files.createSymbolicLink(
+                                            destFile.toPath(),
+                                            java.nio.file.Paths.get(linkTarget)
+                                        )
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Failed to create symlink: ${destFile.path} -> $linkTarget: ${e.message}")
+                                    }
+                                }
+                            } else {
+                                FileOutputStream(destFile).use { fos ->
+                                    tarInputStream.copyTo(fos)
+                                }
+                                // Preserve file permissions (owner execute only)
+                                val mode = entry.mode
+                                if (mode and OWNER_EXECUTE_PERMISSION != 0) {
+                                    destFile.setExecutable(true, true)
+                                }
+                            }
+                        }
+                        entry = tarInputStream.nextTarEntry
+                    }
+                }
+            }
         }
     }
 

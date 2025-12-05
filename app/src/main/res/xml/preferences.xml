@@ -53,28 +53,22 @@
             app:title="@string/settings_remote_streaming_title"
             app:summary="@string/settings_remote_streaming_summary"/>
 
+        <EditTextPreference
+            app:key="@string/settings_remote_streaming_address_key"
+            app:title="@string/settings_remote_streaming_address_title"
+            app:summary="@string/settings_remote_streaming_address_summary"
+            app:defaultValue="@string/settings_remote_streaming_address_default"/>
+
         <Preference
             app:key="@string/settings_remote_scrcpy_key"
             app:title="@string/settings_remote_scrcpy_title"
             app:summary="@string/settings_remote_scrcpy_summary"/>
 
         <EditTextPreference
-            app:key="@string/settings_remote_address_key"
-            app:title="@string/settings_remote_address_title"
-            app:summary="@string/settings_remote_address_summary"
-            app:defaultValue="@string/settings_remote_address_default"/>
-
-        <EditTextPreference
-            app:key="@string/settings_remote_server_port_key"
-            app:title="@string/settings_remote_server_port_title"
-            app:summary="@string/settings_remote_server_port_summary"
-            app:defaultValue="@string/settings_remote_server_port_default"/>
-
-        <EditTextPreference
-            app:key="@string/settings_remote_adb_port_key"
-            app:title="@string/settings_remote_adb_port_title"
-            app:summary="@string/settings_remote_adb_port_summary"
-            app:defaultValue="@string/settings_remote_adb_port_default"/>
+            app:key="@string/settings_remote_adb_address_key"
+            app:title="@string/settings_remote_adb_address_title"
+            app:summary="@string/settings_remote_adb_address_summary"
+            app:defaultValue="@string/settings_remote_adb_address_default"/>
 
     </PreferenceCategory>
 

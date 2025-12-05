@@ -115,10 +115,12 @@ class MainActivity : AppCompatActivity() {
         windowManager.defaultDisplay.getRealMetrics(displayMetrics)
         val dpi = displayMetrics.densityDpi
         
+        val localServerAddress = SettingsActivity.getLocalServerAddress(this)
         val localPort = SettingsActivity.getLocalServerPort(this)
+        val localAdbAddress = SettingsActivity.getLocalAdbAddress(this)
         val localAdbPort = SettingsActivity.getLocalAdbPort(this)
         
-        Log.i(TAG, "Starting embedded server on port $localPort (ADB: $localAdbPort)")
+        Log.i(TAG, "Starting embedded server on $localServerAddress:$localPort (ADB: $localAdbAddress:$localAdbPort)")
         
         // Ensure required directories exist
         ensureRequiredDirectories()
@@ -146,12 +148,12 @@ class MainActivity : AppCompatActivity() {
                     serverPath,
                     "-b", basePath,
                     "-P", prootPath,
-                    "-a", "127.0.0.1",
+                    "-a", localServerAddress,
                     "-p", localPort.toString(),
                     "-w", mSurfaceView.width.toString(),
                     "-h", mSurfaceView.height.toString(),
                     "-d", dpi.toString(),
-                    "-A", "127.0.0.1",
+                    "-A", localAdbAddress,
                     "-D", localAdbPort.toString(),
                     "-t", prootTmpDir  // Explicitly pass tmp dir with exec permission
                 )
@@ -174,7 +176,7 @@ class MainActivity : AppCompatActivity() {
                 Thread.sleep(2000)
                 
                 mainHandler.post {
-                    remoteAddress = "127.0.0.1"
+                    remoteAddress = localServerAddress
                     remotePort = localPort
                     connectToRemoteServer(holder)
                 }
