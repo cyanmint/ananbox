@@ -79,16 +79,22 @@ class SettingsActivity : AppCompatActivity() {
                 val srcServerFile = File(srcServerPath)
                 if (srcServerFile.exists() && (!destServerPath.exists() || destServerPath.length() != srcServerFile.length())) {
                     srcServerFile.copyTo(destServerPath, overwrite = true)
+                    // Set permissions to 700 (rwx------)
+                    destServerPath.setReadable(true, true)
+                    destServerPath.setWritable(true, true)
                     destServerPath.setExecutable(true, true)
-                    Log.i(TAG, "Copied libanbox.so to ${destServerPath.absolutePath}")
+                    Log.i(TAG, "Copied libanbox.so to ${destServerPath.absolutePath} with 700 permissions")
                 }
                 
                 // Copy/link proot binary if needed
                 val srcProotFile = File(srcProotPath)
                 if (srcProotFile.exists() && (!destProotPath.exists() || destProotPath.length() != srcProotFile.length())) {
                     srcProotFile.copyTo(destProotPath, overwrite = true)
+                    // Set permissions to 700 (rwx------)
+                    destProotPath.setReadable(true, true)
+                    destProotPath.setWritable(true, true)
                     destProotPath.setExecutable(true, true)
-                    Log.i(TAG, "Copied libproot.so to ${destProotPath.absolutePath}")
+                    Log.i(TAG, "Copied libproot.so to ${destProotPath.absolutePath} with 700 permissions")
                 }
                 
                 return Pair(destServerPath.absolutePath, destProotPath.absolutePath)
@@ -126,10 +132,18 @@ class SettingsActivity : AppCompatActivity() {
                     val localAdbAddress = getLocalAdbAddress(context)
                     val localAdbPort = getLocalAdbPort(context)
                     
-                    // Ensure the server binary has execute permission
+                    // Ensure the server binary has 700 permissions
                     val serverFile = File(serverPath)
+                    val prootFile = File(prootPath)
                     if (serverFile.exists() && !serverFile.canExecute()) {
+                        serverFile.setReadable(true, true)
+                        serverFile.setWritable(true, true)
                         serverFile.setExecutable(true, true)
+                    }
+                    if (prootFile.exists() && !prootFile.canExecute()) {
+                        prootFile.setReadable(true, true)
+                        prootFile.setWritable(true, true)
+                        prootFile.setExecutable(true, true)
                     }
                     
                     // Use default display dimensions for background server
