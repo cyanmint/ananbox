@@ -39,12 +39,15 @@ class SettingsActivity : AppCompatActivity() {
         private const val TAG = "SettingsActivity"
         private const val ROOTFS_INSTALL_REQUEST_CODE = 100
         
-        // Unix permission bit for owner execute (octal 0100)
+        // Unix permission bit for owner execute (binary 0b001_000_000, octal 0100, decimal 64)
         private const val OWNER_EXECUTE_PERMISSION = 0b001_000_000
         
         // Embedded server process (shared across activities)
         @Volatile
         private var embeddedServerProcess: Process? = null
+        
+        // Lock for synchronizing server start/stop
+        private val serverLock = Any()
         
         // Connection mode constants
         const val MODE_LOCAL_JNI = "local_jni"
@@ -56,85 +59,147 @@ class SettingsActivity : AppCompatActivity() {
             return embeddedServerProcess?.isAlive == true
         }
         
-        fun startEmbeddedServer(context: Context): Boolean {
-            if (isServerRunning()) {
-                Log.i(TAG, "Embedded server already running")
-                return true
-            }
-            
+        /**
+         * Ensures libanbox.so and libproot.so are linked/copied to internal directory
+         * Returns paths to the internal copies
+         */
+        private fun ensureServerBinaries(context: Context): Pair<String, String>? {
             try {
                 val appInfo = context.applicationInfo
                 val filesDir = context.filesDir
+                val binDir = File(filesDir, "bin")
+                binDir.mkdirs()
                 
-                val serverPath = appInfo.nativeLibraryDir + "/libanbox.so"
-                val prootPath = appInfo.nativeLibraryDir + "/libproot.so"
-                val basePath = filesDir.absolutePath
-                val prootTmpDir = appInfo.nativeLibraryDir
+                val srcServerPath = appInfo.nativeLibraryDir + "/libanbox.so"
+                val srcProotPath = appInfo.nativeLibraryDir + "/libproot.so"
+                val destServerPath = File(binDir, "libanbox.so")
+                val destProotPath = File(binDir, "libproot.so")
                 
-                val localServerAddress = getLocalServerAddress(context)
-                val localPort = getLocalServerPort(context)
-                val localAdbAddress = getLocalAdbAddress(context)
-                val localAdbPort = getLocalAdbPort(context)
-                
-                // Ensure the server binary has execute permission
-                val serverFile = File(serverPath)
-                if (serverFile.exists() && !serverFile.canExecute()) {
-                    serverFile.setExecutable(true, true)
+                // Copy/link server binary if needed
+                val srcServerFile = File(srcServerPath)
+                if (srcServerFile.exists() && (!destServerPath.exists() || destServerPath.length() != srcServerFile.length())) {
+                    srcServerFile.copyTo(destServerPath, overwrite = true)
+                    destServerPath.setExecutable(true, true)
+                    Log.i(TAG, "Copied libanbox.so to ${destServerPath.absolutePath}")
                 }
                 
-                // Use default display dimensions for background server
-                val defaultWidth = 1280
-                val defaultHeight = 720
-                val defaultDpi = 160
+                // Copy/link proot binary if needed
+                val srcProotFile = File(srcProotPath)
+                if (srcProotFile.exists() && (!destProotPath.exists() || destProotPath.length() != srcProotFile.length())) {
+                    srcProotFile.copyTo(destProotPath, overwrite = true)
+                    destProotPath.setExecutable(true, true)
+                    Log.i(TAG, "Copied libproot.so to ${destProotPath.absolutePath}")
+                }
                 
-                val command = mutableListOf(
-                    serverPath,
-                    "-b", basePath,
-                    "-P", prootPath,
-                    "-a", localServerAddress,
-                    "-p", localPort.toString(),
-                    "-w", defaultWidth.toString(),
-                    "-h", defaultHeight.toString(),
-                    "-d", defaultDpi.toString(),
-                    "-A", localAdbAddress,
-                    "-D", localAdbPort.toString(),
-                    "-t", prootTmpDir
-                )
+                return Pair(destServerPath.absolutePath, destProotPath.absolutePath)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to ensure server binaries", e)
+                return null
+            }
+        }
+        
+        fun startEmbeddedServer(context: Context): Boolean {
+            synchronized(serverLock) {
+                if (isServerRunning()) {
+                    Log.i(TAG, "Embedded server already running")
+                    return true
+                }
                 
-                Log.i(TAG, "Starting embedded server: ${command.joinToString(" ")}")
-                
-                val processBuilder = ProcessBuilder(command)
-                processBuilder.environment()["PROOT_TMP_DIR"] = prootTmpDir
-                processBuilder.redirectErrorStream(true)
-                
-                embeddedServerProcess = processBuilder.start()
-                
-                // Start a background thread to read server output
-                thread {
-                    val serverLogFile = File(filesDir, "server.log")
-                    serverLogFile.bufferedWriter().use { logWriter ->
-                        embeddedServerProcess?.inputStream?.bufferedReader()?.forEachLine { line ->
-                            Log.i(TAG, "Server: $line")
-                            logWriter.write(line)
-                            logWriter.newLine()
-                            logWriter.flush()
+                try {
+                    val filesDir = context.filesDir
+                    val basePath = filesDir.absolutePath
+                    
+                    // Ensure binaries are in internal directory
+                    val binaries = ensureServerBinaries(context)
+                    if (binaries == null) {
+                        Log.e(TAG, "Failed to setup server binaries")
+                        return false
+                    }
+                    val (serverPath, prootPath) = binaries
+                    
+                    // Use internal tmp directory for proot
+                    val prootTmpDir = File(filesDir, "tmp")
+                    prootTmpDir.mkdirs()
+                    
+                    val localServerAddress = getLocalServerAddress(context)
+                    val localPort = getLocalServerPort(context)
+                    val localAdbAddress = getLocalAdbAddress(context)
+                    val localAdbPort = getLocalAdbPort(context)
+                    
+                    // Ensure the server binary has execute permission
+                    val serverFile = File(serverPath)
+                    if (serverFile.exists() && !serverFile.canExecute()) {
+                        serverFile.setExecutable(true, true)
+                    }
+                    
+                    // Use default display dimensions for background server
+                    val defaultWidth = 1280
+                    val defaultHeight = 720
+                    val defaultDpi = 160
+                    
+                    val command = mutableListOf(
+                        serverPath,
+                        "-b", basePath,
+                        "-P", prootPath,
+                        "-a", localServerAddress,
+                        "-p", localPort.toString(),
+                        "-w", defaultWidth.toString(),
+                        "-h", defaultHeight.toString(),
+                        "-d", defaultDpi.toString(),
+                        "-A", localAdbAddress,
+                        "-D", localAdbPort.toString(),
+                        "-t", prootTmpDir.absolutePath
+                    )
+                    
+                    Log.i(TAG, "Starting embedded server: ${command.joinToString(" ")}")
+                    
+                    val processBuilder = ProcessBuilder(command)
+                    processBuilder.environment()["PROOT_TMP_DIR"] = prootTmpDir.absolutePath
+                    processBuilder.redirectErrorStream(true)
+                    
+                    embeddedServerProcess = processBuilder.start()
+                    
+                    // Start a background thread to read server output with proper error handling
+                    thread {
+                        try {
+                            val serverLogFile = File(filesDir, "server.log")
+                            embeddedServerProcess?.inputStream?.bufferedReader()?.use { reader ->
+                                serverLogFile.bufferedWriter().use { logWriter ->
+                                    reader.forEachLine { line ->
+                                        Log.i(TAG, "Server: $line")
+                                        logWriter.write(line)
+                                        logWriter.newLine()
+                                        logWriter.flush()
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error reading/writing server output", e)
                         }
                     }
+                    
+                    Log.i(TAG, "Embedded server started on $localServerAddress:$localPort")
+                    return true
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to start embedded server", e)
+                    return false
                 }
-                
-                Log.i(TAG, "Embedded server started on $localServerAddress:$localPort")
-                return true
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to start embedded server", e)
-                return false
             }
         }
         
         fun stopEmbeddedServer() {
-            embeddedServerProcess?.let { process ->
-                Log.i(TAG, "Stopping embedded server...")
-                process.destroy()
-                embeddedServerProcess = null
+            synchronized(serverLock) {
+                embeddedServerProcess?.let { process ->
+                    Log.i(TAG, "Stopping embedded server...")
+                    process.destroyForcibly()
+                    try {
+                        // Wait up to 5 seconds for process to terminate
+                        process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+                    } catch (e: InterruptedException) {
+                        Log.w(TAG, "Interrupted while waiting for server to stop")
+                    }
+                    embeddedServerProcess = null
+                }
             }
         }
         
@@ -234,9 +299,9 @@ class SettingsActivity : AppCompatActivity() {
         
         fun getLocalServerAddress(context: Context): String {
             val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_local_port_key),
-                          context.getString(R.string.settings_local_port_default))
-                ?: context.getString(R.string.settings_local_port_default)
+                .getString(context.getString(R.string.settings_local_server_address_key),
+                          context.getString(R.string.settings_local_server_address_default))
+                ?: context.getString(R.string.settings_local_server_address_default)
             // Parse address from address:port format
             return if (addressPort.contains(":")) {
                 addressPort.substringBefore(":")
@@ -247,9 +312,9 @@ class SettingsActivity : AppCompatActivity() {
         
         fun getLocalServerPort(context: Context): Int {
             val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_local_port_key),
-                          context.getString(R.string.settings_local_port_default))
-                ?: context.getString(R.string.settings_local_port_default)
+                .getString(context.getString(R.string.settings_local_server_address_key),
+                          context.getString(R.string.settings_local_server_address_default))
+                ?: context.getString(R.string.settings_local_server_address_default)
             // Parse port from address:port format
             return try {
                 if (addressPort.contains(":")) {
@@ -264,9 +329,9 @@ class SettingsActivity : AppCompatActivity() {
         
         fun getLocalAdbAddress(context: Context): String {
             val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_local_adb_port_key),
-                          context.getString(R.string.settings_local_adb_port_default))
-                ?: context.getString(R.string.settings_local_adb_port_default)
+                .getString(context.getString(R.string.settings_local_adb_address_key),
+                          context.getString(R.string.settings_local_adb_address_default))
+                ?: context.getString(R.string.settings_local_adb_address_default)
             // Parse address from address:port format
             return if (addressPort.isEmpty()) {
                 ""  // Disabled
@@ -279,9 +344,9 @@ class SettingsActivity : AppCompatActivity() {
         
         fun getLocalAdbPort(context: Context): Int {
             val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(context.getString(R.string.settings_local_adb_port_key),
-                          context.getString(R.string.settings_local_adb_port_default))
-                ?: context.getString(R.string.settings_local_adb_port_default)
+                .getString(context.getString(R.string.settings_local_adb_address_key),
+                          context.getString(R.string.settings_local_adb_address_default))
+                ?: context.getString(R.string.settings_local_adb_address_default)
             // Parse port from address:port format (empty = disabled)
             return try {
                 if (addressPort.isEmpty()) {
@@ -318,8 +383,8 @@ class SettingsActivity : AppCompatActivity() {
             val remoteScrcpyOption = preferenceScreen.findPreference<Preference>(getString(R.string.settings_remote_scrcpy_key))
             
             // Local settings
-            val localServerAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_port_key))
-            val localAdbAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_adb_port_key))
+            val localServerAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_server_address_key))
+            val localAdbAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_adb_address_key))
             val basedir = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_basedir_key))
             
             // Remote settings
@@ -336,6 +401,10 @@ class SettingsActivity : AppCompatActivity() {
 
             // Handle local JNI option - on click, connect immediately
             localJniOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                // If local server is running, stop it before switching modes
+                if (localServerToggle?.isChecked == true) {
+                    stopEmbeddedServer()
+                }
                 // Disable local server toggle
                 localServerToggle?.isChecked = false
                 
@@ -425,6 +494,10 @@ class SettingsActivity : AppCompatActivity() {
             
             // Handle remote streaming option - click to connect
             remoteStreamingOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                // If local server is running, stop it before switching modes
+                if (localServerToggle?.isChecked == true) {
+                    stopEmbeddedServer()
+                }
                 // Disable local server toggle
                 localServerToggle?.isChecked = false
                 
@@ -441,6 +514,10 @@ class SettingsActivity : AppCompatActivity() {
             
             // Handle remote scrcpy option - click to connect
             remoteScrcpyOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                // If local server is running, stop it before switching modes
+                if (localServerToggle?.isChecked == true) {
+                    stopEmbeddedServer()
+                }
                 // Disable local server toggle
                 localServerToggle?.isChecked = false
                 
@@ -482,7 +559,7 @@ class SettingsActivity : AppCompatActivity() {
             // Update local server address summary
             localServerAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
                 if (pref.text.isNullOrEmpty()) {
-                    getString(R.string.settings_local_port_summary)
+                    getString(R.string.settings_local_server_address_summary)
                 } else {
                     pref.text
                 }
@@ -491,9 +568,9 @@ class SettingsActivity : AppCompatActivity() {
             // Update local ADB address summary
             localAdbAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
                 if (pref.text.isNullOrEmpty()) {
-                    getString(R.string.settings_local_adb_port_summary)
+                    getString(R.string.settings_local_adb_address_summary)
                 } else {
-                    if (pref.text.isNullOrEmpty()) "Disabled" else pref.text
+                    pref.text
                 }
             }
             
@@ -931,6 +1008,9 @@ class SettingsActivity : AppCompatActivity() {
                                 inputStream.close()
                                 ensureRequiredDirectories(destDir)
                                 
+                                // Now start the embedded server after extraction
+                                val success = startEmbeddedServer(context)
+                                
                                 activity?.runOnUiThread {
                                     progressDialog.dismiss()
                                     // Now enable the toggle and save preference
@@ -942,12 +1022,18 @@ class SettingsActivity : AppCompatActivity() {
                                         .putString(getString(R.string.settings_connection_mode_key), MODE_LOCAL_SERVER)
                                         .apply()
                                     
-                                    Toast.makeText(context, getString(R.string.embedded_server_starting), Toast.LENGTH_SHORT).show()
+                                    if (success) {
+                                        val port = getLocalServerPort(context)
+                                        Toast.makeText(context, getString(R.string.embedded_server_started, port), Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, getString(R.string.embedded_server_failed, "Failed to start"), Toast.LENGTH_LONG).show()
+                                        localServerToggle?.isChecked = false
+                                    }
                                 }
                             } else {
                                 activity?.runOnUiThread {
                                     progressDialog.dismiss()
-                                    Toast.makeText(context, "Failed to open file", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, getString(R.string.rootfs_open_failed), Toast.LENGTH_SHORT).show()
                                     val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
                                     localServerToggle?.isChecked = false
                                 }
@@ -956,7 +1042,7 @@ class SettingsActivity : AppCompatActivity() {
                             Log.e(TAG, "Failed to extract rootfs", e)
                             activity?.runOnUiThread {
                                 progressDialog.dismiss()
-                                Toast.makeText(context, "Failed to extract: ${e.message}", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, getString(R.string.rootfs_extract_failed), Toast.LENGTH_LONG).show()
                                 val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
                                 localServerToggle?.isChecked = false
                             }
@@ -1012,7 +1098,10 @@ class SettingsActivity : AppCompatActivity() {
                                 // Validate symlink target to prevent escape attacks
                                 val isAbsolute = linkTarget.startsWith("/")
                                 val wouldEscape = if (isAbsolute) {
-                                    false  // Allow absolute symlinks as proot handles them
+                                    // Allow absolute symlinks: proot virtualizes the filesystem,
+                                    // so absolute symlinks inside the rootfs resolve within the
+                                    // proot environment and cannot escape to the host filesystem.
+                                    false
                                 } else {
                                     var currentPath: File? = destFile.parentFile
                                     for (component in linkTarget.split("/")) {

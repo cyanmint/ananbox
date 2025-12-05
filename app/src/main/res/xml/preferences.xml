@@ -24,16 +24,16 @@
             app:defaultValue="false"/>
 
         <EditTextPreference
-            app:key="@string/settings_local_port_key"
-            app:title="@string/settings_local_port_title"
-            app:summary="@string/settings_local_port_summary"
-            app:defaultValue="@string/settings_local_port_default"/>
+            app:key="@string/settings_local_server_address_key"
+            app:title="@string/settings_local_server_address_title"
+            app:summary="@string/settings_local_server_address_summary"
+            app:defaultValue="@string/settings_local_server_address_default"/>
 
         <EditTextPreference
-            app:key="@string/settings_local_adb_port_key"
-            app:title="@string/settings_local_adb_port_title"
-            app:summary="@string/settings_local_adb_port_summary"
-            app:defaultValue="@string/settings_local_adb_port_default"/>
+            app:key="@string/settings_local_adb_address_key"
+            app:title="@string/settings_local_adb_address_title"
+            app:summary="@string/settings_local_adb_address_summary"
+            app:defaultValue="@string/settings_local_adb_address_default"/>
 
         <EditTextPreference
             app:key="@string/settings_basedir_key"
