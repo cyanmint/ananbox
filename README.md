@@ -194,6 +194,8 @@ The project uses Gradle for building. C++ warnings from third-party code are sup
 - **Self-contained Build**: Vendored all dependencies (anbox, boost, proot) for reproducible builds
 
 #### Bug Fixes
+- Fixed embedded server mode container startup by using `PROOT_LOADER` to point to pre-built loader binary
+- Fixed noexec filesystem issue by bundling proot loader in native library directory (which has exec permission)
 - Fixed local JNI mode container startup by properly setting `PROOT_TMP_DIR` environment variable
 - Fixed blank black screen issue by ensuring required directories exist before container starts
 - Improved symlink handling during rootfs extraction with better validation
