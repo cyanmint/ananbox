@@ -131,6 +131,13 @@ class MainActivity : AppCompatActivity() {
                 val prootPath = applicationInfo.nativeLibraryDir + "/libproot.so"
                 val basePath = filesDir.absolutePath
                 
+                // Ensure the server binary has execute permission
+                val serverFile = File(serverPath)
+                if (serverFile.exists() && !serverFile.canExecute()) {
+                    serverFile.setExecutable(true, true)
+                    Log.i(TAG, "Set execute permission on $serverPath")
+                }
+                
                 // Use nativeLibraryDir for PROOT_TMP_DIR since it's mounted with exec permission
                 // The app's filesDir is mounted with noexec, preventing proot's loader from being executed
                 val prootTmpDir = applicationInfo.nativeLibraryDir

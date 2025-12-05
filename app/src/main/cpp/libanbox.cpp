@@ -521,7 +521,16 @@ int main(int argc, char* argv[]) {
     }
 
     if (startup_script.empty()) startup_script = rootfs_path + "/run.sh";
-    if (tmp_dir.empty()) tmp_dir = base_path + "/tmp";
+    // Use PROOT_TMP_DIR from environment if tmp_dir not explicitly set
+    // This allows the parent process (e.g., Android app) to specify an executable directory
+    if (tmp_dir.empty()) {
+        const char* env_tmp_dir = getenv("PROOT_TMP_DIR");
+        if (env_tmp_dir != nullptr && env_tmp_dir[0] != '\0') {
+            tmp_dir = env_tmp_dir;
+        } else {
+            tmp_dir = base_path + "/tmp";
+        }
+    }
     if (adb_address.empty()) adb_address = listen_address;
     
     if (!ensure_directory(tmp_dir)) {
