@@ -178,9 +178,9 @@ class SettingsActivity : AppCompatActivity() {
                     FileOutputStream(scrcpyServerFile).use { output ->
                         output.write(assetBytes)
                     }
-                    // Set read and execute permissions for all users
-                    scrcpyServerFile.setReadable(true, false)
-                    scrcpyServerFile.setExecutable(true, false)
+                    // Set read and execute permissions for owner only
+                    scrcpyServerFile.setReadable(true, true)
+                    scrcpyServerFile.setExecutable(true, true)
                     Log.i(TAG, "Copied scrcpy-server to ${scrcpyServerFile.absolutePath}")
                 }
             } catch (e: Exception) {
