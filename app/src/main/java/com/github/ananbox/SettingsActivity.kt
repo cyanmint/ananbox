@@ -710,6 +710,17 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
         
+        override fun onResume() {
+            super.onResume()
+            // Update local server toggle state based on whether the server is actually running
+            val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
+            val serverRunning = isServerRunning()
+            if (localServerToggle?.isChecked != serverRunning) {
+                localServerToggle?.isChecked = serverRunning
+                Log.d(TAG, "Updated local server toggle to match actual state: $serverRunning")
+            }
+        }
+        
         private fun showClearLogsConfirmation() {
             val context = activity ?: return
             AlertDialog.Builder(context)
