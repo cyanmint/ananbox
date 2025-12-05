@@ -243,9 +243,10 @@ class AdbHelper(
             
             // Start scrcpy server
             // The server needs to be started with app_process
+            // Version must match the bundled scrcpy-server version (v3.3.3)
             val scrcpyCmd = buildString {
                 append("CLASSPATH=$SCRCPY_SERVER_PATH ")
-                append("app_process / com.genymobile.scrcpy.Server 2.1 ")
+                append("app_process / com.genymobile.scrcpy.Server 3.3.3 ")
                 append("tunnel_forward=${if (tunnelForward) "true" else "false"} ")
                 append("audio=false ")
                 append("control=true ")
@@ -261,6 +262,7 @@ class AdbHelper(
             }
             
             // Give it a moment to start
+            // TODO: Use proper synchronization instead of sleep
             Thread.sleep(500)
             
             return true
