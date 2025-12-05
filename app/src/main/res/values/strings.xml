@@ -13,13 +13,13 @@
     <!-- Local Mode Settings (foldable group) -->
     <string name="settings_local_category">Local Mode</string>
     <string name="settings_local_jni_key">local_jni_toggle</string>
-    <string name="settings_local_jni_title">Start via JNI</string>
-    <string name="settings_local_jni_summary">Start container directly and show immediately</string>
+    <string name="settings_local_jni_title">Connect JNI Container</string>
+    <string name="settings_local_jni_summary">Connect to container (starts if not running)</string>
     <string name="settings_local_jni_summary_on">Container running via JNI</string>
     <string name="settings_local_jni_summary_off">Toggle on to start container via JNI</string>
     <string name="settings_local_server_key">local_server_toggle</string>
-    <string name="settings_local_server_title">Start via Local Server</string>
-    <string name="settings_local_server_summary">Start container via local standalone server in background</string>
+    <string name="settings_local_server_title">Start Local Server</string>
+    <string name="settings_local_server_summary">Start embedded server in background (toggle off to stop)</string>
     <string name="settings_local_server_summary_on">Local server running in background</string>
     <string name="settings_local_server_summary_off">Toggle on to start local server</string>
     <string name="settings_local_port_key">local_server_address</string>
@@ -61,11 +61,11 @@
     <string name="settings_remote_streaming_address_key">remote_streaming_address</string>
     <string name="settings_remote_streaming_address_title">Remote Streaming Address</string>
     <string name="settings_remote_streaming_address_summary">Address:port for streaming connection</string>
-    <string name="settings_remote_streaming_address_default">192.168.1.100:15558</string>
+    <string name="settings_remote_streaming_address_default">127.0.0.1:15558</string>
     <string name="settings_remote_adb_address_key">remote_adb_address</string>
     <string name="settings_remote_adb_address_title">Remote ADB Address</string>
     <string name="settings_remote_adb_address_summary">Address:port for ADB/scrcpy connection</string>
-    <string name="settings_remote_adb_address_default">192.168.1.100:15555</string>
+    <string name="settings_remote_adb_address_default">127.0.0.1:15555</string>
     
     <!-- Settings group -->
     <string name="settings_general_category">Settings</string>

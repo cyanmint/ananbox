@@ -42,11 +42,101 @@ class SettingsActivity : AppCompatActivity() {
         // Unix permission bit for owner execute (octal 0100)
         private const val OWNER_EXECUTE_PERMISSION = 0b001_000_000
         
+        // Embedded server process (shared across activities)
+        @Volatile
+        private var embeddedServerProcess: Process? = null
+        
         // Connection mode constants
         const val MODE_LOCAL_JNI = "local_jni"
         const val MODE_LOCAL_SERVER = "local_server"
         const val MODE_REMOTE_LEGACY = "remote_legacy"
         const val MODE_REMOTE_SCRCPY = "remote_scrcpy"
+        
+        fun isServerRunning(): Boolean {
+            return embeddedServerProcess?.isAlive == true
+        }
+        
+        fun startEmbeddedServer(context: Context): Boolean {
+            if (isServerRunning()) {
+                Log.i(TAG, "Embedded server already running")
+                return true
+            }
+            
+            try {
+                val appInfo = context.applicationInfo
+                val filesDir = context.filesDir
+                
+                val serverPath = appInfo.nativeLibraryDir + "/libanbox.so"
+                val prootPath = appInfo.nativeLibraryDir + "/libproot.so"
+                val basePath = filesDir.absolutePath
+                val prootTmpDir = appInfo.nativeLibraryDir
+                
+                val localServerAddress = getLocalServerAddress(context)
+                val localPort = getLocalServerPort(context)
+                val localAdbAddress = getLocalAdbAddress(context)
+                val localAdbPort = getLocalAdbPort(context)
+                
+                // Ensure the server binary has execute permission
+                val serverFile = File(serverPath)
+                if (serverFile.exists() && !serverFile.canExecute()) {
+                    serverFile.setExecutable(true, true)
+                }
+                
+                // Use default display dimensions for background server
+                val defaultWidth = 1280
+                val defaultHeight = 720
+                val defaultDpi = 160
+                
+                val command = mutableListOf(
+                    serverPath,
+                    "-b", basePath,
+                    "-P", prootPath,
+                    "-a", localServerAddress,
+                    "-p", localPort.toString(),
+                    "-w", defaultWidth.toString(),
+                    "-h", defaultHeight.toString(),
+                    "-d", defaultDpi.toString(),
+                    "-A", localAdbAddress,
+                    "-D", localAdbPort.toString(),
+                    "-t", prootTmpDir
+                )
+                
+                Log.i(TAG, "Starting embedded server: ${command.joinToString(" ")}")
+                
+                val processBuilder = ProcessBuilder(command)
+                processBuilder.environment()["PROOT_TMP_DIR"] = prootTmpDir
+                processBuilder.redirectErrorStream(true)
+                
+                embeddedServerProcess = processBuilder.start()
+                
+                // Start a background thread to read server output
+                thread {
+                    val serverLogFile = File(filesDir, "server.log")
+                    serverLogFile.bufferedWriter().use { logWriter ->
+                        embeddedServerProcess?.inputStream?.bufferedReader()?.forEachLine { line ->
+                            Log.i(TAG, "Server: $line")
+                            logWriter.write(line)
+                            logWriter.newLine()
+                            logWriter.flush()
+                        }
+                    }
+                }
+                
+                Log.i(TAG, "Embedded server started on $localServerAddress:$localPort")
+                return true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start embedded server", e)
+                return false
+            }
+        }
+        
+        fun stopEmbeddedServer() {
+            embeddedServerProcess?.let { process ->
+                Log.i(TAG, "Stopping embedded server...")
+                process.destroy()
+                embeddedServerProcess = null
+            }
+        }
         
         fun isVerboseModeEnabled(context: Context): Boolean {
             return PreferenceManager.getDefaultSharedPreferences(context)
@@ -269,7 +359,7 @@ class SettingsActivity : AppCompatActivity() {
                 true
             }
             
-            // Handle local server toggle - starts in background, does NOT connect immediately
+            // Handle local server toggle - starts/stops embedded server in background
             localServerToggle?.onPreferenceChangeListener = Preference.OnPreferenceChangeListener { _, newValue ->
                 val enabled = newValue as Boolean
                 if (enabled) {
@@ -311,14 +401,23 @@ class SettingsActivity : AppCompatActivity() {
                         .putString(getString(R.string.settings_connection_mode_key), MODE_LOCAL_SERVER)
                         .apply()
                     
-                    // Start local server in background (no MainActivity launch)
+                    // Actually start the embedded server in background
                     Toast.makeText(activity, getString(R.string.embedded_server_starting), Toast.LENGTH_SHORT).show()
-                    // The server will be started by MainActivity when user navigates to it
-                    // or we could start a background service here
+                    thread {
+                        val success = startEmbeddedServer(context)
+                        activity?.runOnUiThread {
+                            if (success) {
+                                val port = getLocalServerPort(context)
+                                Toast.makeText(activity, getString(R.string.embedded_server_started, port), Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(activity, getString(R.string.embedded_server_failed, "Failed to start"), Toast.LENGTH_LONG).show()
+                                localServerToggle?.isChecked = false
+                            }
+                        }
+                    }
                 } else {
                     // Stop server
-                    Anbox.stopRuntime()
-                    Anbox.stopContainer()
+                    stopEmbeddedServer()
                     Toast.makeText(activity, getString(R.string.embedded_server_stopped), Toast.LENGTH_SHORT).show()
                 }
                 true
