@@ -196,6 +196,8 @@ The project uses Gradle for building. C++ warnings from third-party code are sup
 #### Bug Fixes
 - Fixed embedded server mode container startup by using `PROOT_LOADER` to point to pre-built loader binary
 - Fixed noexec filesystem issue by bundling proot loader in native library directory (which has exec permission)
+- Use symlinks instead of copying binaries from nativeLibraryDir to filesDir/bin (saves disk space)
+- Detect and recreate dangling symlinks after app upgrade
 - Fixed local JNI mode container startup by properly setting `PROOT_TMP_DIR` environment variable
 - Fixed blank black screen issue by ensuring required directories exist before container starts
 - Improved symlink handling during rootfs extraction with better validation
@@ -205,6 +207,7 @@ The project uses Gradle for building. C++ warnings from third-party code are sup
 - Vendored proot source code to make the project self-contained
 - Disabled proot Python extension for Android compatibility
 - Suppressed excessive C/C++ warnings during compilation
+- Lowered targetSdk to 28 to bypass W^X noexec restriction (like Termux on F-Droid)
 
 ### Version 0.1.0 (Original)
 - Initial fork from Anbox

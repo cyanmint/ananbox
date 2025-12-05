@@ -70,37 +70,111 @@ class SettingsActivity : AppCompatActivity() {
                 val binDir = File(filesDir, "bin")
                 binDir.mkdirs()
                 
-                val srcServerPath = appInfo.nativeLibraryDir + "/libanbox.so"
-                val srcProotPath = appInfo.nativeLibraryDir + "/libproot.so"
+                val nativeLibDir = appInfo.nativeLibraryDir
+                
+                // List of all .so files to symlink from nativeLibraryDir to binDir
+                val soFiles = listOf("libanbox.so", "libproot.so", "libproot-loader.so")
+                
+                for (soFile in soFiles) {
+                    val srcPath = "$nativeLibDir/$soFile"
+                    val destFile = File(binDir, soFile)
+                    val srcFile = File(srcPath)
+                    
+                    // Check if symlink needs to be created or recreated
+                    // A dangling symlink (after app upgrade) will have exists()=false but the file path exists
+                    val needsSymlink = when {
+                        !srcFile.exists() -> {
+                            Log.w(TAG, "Source file does not exist: $srcPath")
+                            false
+                        }
+                        !destFile.exists() -> {
+                            // Destination doesn't exist - check if it's a dangling symlink
+                            try {
+                                // Try to delete in case it's a dangling symlink
+                                destFile.delete()
+                            } catch (e: Exception) {
+                                // Ignore
+                            }
+                            true
+                        }
+                        else -> {
+                            // Check if it's a valid symlink pointing to the right target
+                            try {
+                                val canonicalDest = destFile.canonicalPath
+                                val canonicalSrc = srcFile.canonicalPath
+                                if (canonicalDest != canonicalSrc) {
+                                    // Symlink points to wrong target (possibly after app upgrade)
+                                    destFile.delete()
+                                    true
+                                } else {
+                                    false
+                                }
+                            } catch (e: Exception) {
+                                // Error checking symlink - recreate it
+                                destFile.delete()
+                                true
+                            }
+                        }
+                    }
+                    
+                    if (needsSymlink) {
+                        // Create symlink using Os.symlink
+                        try {
+                            android.system.Os.symlink(srcPath, destFile.absolutePath)
+                            Log.i(TAG, "Created symlink: ${destFile.absolutePath} -> $srcPath")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to create symlink for $soFile", e)
+                            // Fallback: copy the file if symlink fails
+                            srcFile.copyTo(destFile, overwrite = true)
+                            destFile.setReadable(true, true)
+                            destFile.setWritable(true, true)
+                            destFile.setExecutable(true, true)
+                            Log.i(TAG, "Fallback: copied $soFile to ${destFile.absolutePath}")
+                        }
+                    }
+                }
+                
+                // Copy scrcpy-server from assets to bin directory
+                ensureScrcpyServer(context, binDir)
+                
                 val destServerPath = File(binDir, "libanbox.so")
                 val destProotPath = File(binDir, "libproot.so")
-                
-                // Copy/link server binary if needed
-                val srcServerFile = File(srcServerPath)
-                if (srcServerFile.exists() && (!destServerPath.exists() || destServerPath.length() != srcServerFile.length())) {
-                    srcServerFile.copyTo(destServerPath, overwrite = true)
-                    // Set permissions to 700 (rwx------)
-                    destServerPath.setReadable(true, true)
-                    destServerPath.setWritable(true, true)
-                    destServerPath.setExecutable(true, true)
-                    Log.i(TAG, "Copied libanbox.so to ${destServerPath.absolutePath} with 700 permissions")
-                }
-                
-                // Copy/link proot binary if needed
-                val srcProotFile = File(srcProotPath)
-                if (srcProotFile.exists() && (!destProotPath.exists() || destProotPath.length() != srcProotFile.length())) {
-                    srcProotFile.copyTo(destProotPath, overwrite = true)
-                    // Set permissions to 700 (rwx------)
-                    destProotPath.setReadable(true, true)
-                    destProotPath.setWritable(true, true)
-                    destProotPath.setExecutable(true, true)
-                    Log.i(TAG, "Copied libproot.so to ${destProotPath.absolutePath} with 700 permissions")
-                }
                 
                 return Pair(destServerPath.absolutePath, destProotPath.absolutePath)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to ensure server binaries", e)
                 return null
+            }
+        }
+        
+        /**
+         * Copy scrcpy-server from assets to the bin directory.
+         * This is needed for adb to push the scrcpy server into the container.
+         */
+        private fun ensureScrcpyServer(context: Context, binDir: File) {
+            try {
+                val scrcpyServerFile = File(binDir, "scrcpy-server")
+                
+                // Check if scrcpy-server needs to be updated
+                // We'll always copy from assets on first run or when asset is updated
+                val assetManager = context.assets
+                val assetInputStream = assetManager.open("scrcpy-server")
+                val assetSize = assetInputStream.available()
+                assetInputStream.close()
+                
+                val needsCopy = !scrcpyServerFile.exists() || scrcpyServerFile.length() != assetSize.toLong()
+                
+                if (needsCopy) {
+                    assetManager.open("scrcpy-server").use { input ->
+                        FileOutputStream(scrcpyServerFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    scrcpyServerFile.setReadable(true, false)
+                    Log.i(TAG, "Copied scrcpy-server to ${scrcpyServerFile.absolutePath}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to copy scrcpy-server from assets", e)
             }
         }
         
