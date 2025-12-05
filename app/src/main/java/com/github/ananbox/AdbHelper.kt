@@ -1,15 +1,15 @@
 package com.github.ananbox
 
 import android.util.Log
-import java.io.BufferedReader
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.io.FileInputStream
-import java.io.InputStreamReader
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
@@ -23,6 +23,9 @@ class AdbHelper(
 ) {
     companion object {
         private const val TAG = "AdbHelper"
+        
+        // scrcpy-server version - must match the bundled asset in assets/scrcpy-server
+        const val SCRCPY_VERSION = "3.3.3"
         
         // ADB protocol constants
         private const val A_SYNC = 0x434e5953  // "SYNC"
@@ -44,6 +47,10 @@ class AdbHelper(
         private const val ID_FAIL = 0x4c494146  // "FAIL"
         
         private const val SCRCPY_SERVER_PATH = "/data/local/tmp/scrcpy-server.jar"
+        
+        // Timeout for waiting for scrcpy server to start
+        private const val SCRCPY_START_TIMEOUT_MS = 5000L
+        private const val SCRCPY_POLL_INTERVAL_MS = 100L
     }
     
     private var socket: Socket? = null
@@ -232,6 +239,7 @@ class AdbHelper(
     
     /**
      * Push scrcpy-server and start it.
+     * Uses proper synchronization to wait for the server to start.
      */
     fun pushAndStartScrcpyServer(scrcpyServerFile: File, tunnelForward: Boolean = true): Boolean {
         try {
@@ -241,12 +249,14 @@ class AdbHelper(
                 return false
             }
             
+            // Use CountDownLatch to wait for server startup
+            val serverStartedLatch = CountDownLatch(1)
+            
             // Start scrcpy server
             // The server needs to be started with app_process
-            // Version must match the bundled scrcpy-server version (v3.3.3)
             val scrcpyCmd = buildString {
                 append("CLASSPATH=$SCRCPY_SERVER_PATH ")
-                append("app_process / com.genymobile.scrcpy.Server 3.3.3 ")
+                append("app_process / com.genymobile.scrcpy.Server $SCRCPY_VERSION ")
                 append("tunnel_forward=${if (tunnelForward) "true" else "false"} ")
                 append("audio=false ")
                 append("control=true ")
@@ -254,17 +264,28 @@ class AdbHelper(
                 append("raw_stream=true")
             }
             
-            // Run in background
+            // Run in background and watch for startup indication
             thread {
                 shell(scrcpyCmd) { output ->
                     Log.d(TAG, "scrcpy: $output")
+                    // scrcpy server outputs "[server]" when it starts listening
+                    if (output.contains("[server]") || output.contains("Device:") || 
+                        output.contains("listening") || output.contains("INFO:")) {
+                        serverStartedLatch.countDown()
+                    }
                 }
             }
             
-            // Give it a moment to start
-            // TODO: Use proper synchronization instead of sleep
-            Thread.sleep(500)
+            // Wait for server to start with timeout
+            val started = serverStartedLatch.await(SCRCPY_START_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             
+            if (!started) {
+                // Timeout - server may still be starting, give it a minimal wait
+                Log.w(TAG, "Timeout waiting for scrcpy server startup signal, proceeding anyway")
+                Thread.sleep(SCRCPY_POLL_INTERVAL_MS)
+            }
+            
+            Log.i(TAG, "scrcpy server started: $started")
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start scrcpy server", e)

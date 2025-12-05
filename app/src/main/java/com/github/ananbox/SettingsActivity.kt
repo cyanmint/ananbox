@@ -154,29 +154,24 @@ class SettingsActivity : AppCompatActivity() {
         private fun ensureScrcpyServer(context: Context, binDir: File) {
             try {
                 val scrcpyServerFile = File(binDir, "scrcpy-server")
-                
-                // Always copy from assets - comparing by fully reading the asset
-                // to ensure we have the latest version after app updates
                 val assetManager = context.assets
                 
-                // Read the asset to get its full content for comparison
-                val assetBytes = assetManager.open("scrcpy-server").use { it.readBytes() }
+                // Get asset size without reading entire file into memory
+                val assetSize = assetManager.openFd("scrcpy-server").use { it.length }
                 
                 val needsCopy = if (!scrcpyServerFile.exists()) {
                     true
                 } else {
-                    // Compare file sizes first (quick check)
-                    if (scrcpyServerFile.length() != assetBytes.size.toLong()) {
-                        true
-                    } else {
-                        // If sizes match, could also compare contents, but size check is usually enough
-                        false
-                    }
+                    // Compare file sizes (quick check without reading file contents)
+                    scrcpyServerFile.length() != assetSize
                 }
                 
                 if (needsCopy) {
-                    FileOutputStream(scrcpyServerFile).use { output ->
-                        output.write(assetBytes)
+                    // Only read the asset when we actually need to copy it
+                    assetManager.open("scrcpy-server").use { input ->
+                        FileOutputStream(scrcpyServerFile).use { output ->
+                            input.copyTo(output)
+                        }
                     }
                     // Set read and execute permissions for owner only
                     scrcpyServerFile.setReadable(true, true)
