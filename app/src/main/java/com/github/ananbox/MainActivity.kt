@@ -534,6 +534,8 @@ class MainActivity : AppCompatActivity() {
                     if (inputStream != null) {
                         extractTarGz(inputStream, filesDir)
                         inputStream.close()
+                        // Patch run.sh to respect externally-set PROOT_TMP_DIR
+                        patchRunScript()
                         // Create required directories after extraction
                         ensureRequiredDirectories()
                         progressDialog.dismiss()
@@ -541,6 +543,43 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun patchRunScript() {
+        // Patch run.sh to respect externally-set PROOT_TMP_DIR
+        // The original run.sh always sets PROOT_TMP_DIR=$DIR/tmp which may be on
+        // a noexec partition. We need it to respect the PROOT_TMP_DIR set by the app
+        // when calling the embedded server or JNI mode.
+        val runScriptFile = File(filesDir, "rootfs/run.sh")
+        if (!runScriptFile.exists()) {
+            Log.w(TAG, "run.sh not found, skipping patch")
+            return
+        }
+        
+        try {
+            val content = runScriptFile.readText()
+            // Use regex to handle potential whitespace and quoting variations
+            // Match: export PROOT_TMP_DIR=$DIR/tmp with optional quotes and whitespace
+            // Replace with: [ -z "$PROOT_TMP_DIR" ] && export PROOT_TMP_DIR=$DIR/tmp
+            val pattern = Regex("""export\s+PROOT_TMP_DIR\s*=\s*["']?\${'$'}DIR/tmp["']?""")
+            val patched = pattern.replace(content) { matchResult ->
+                """[ -z "${'$'}PROOT_TMP_DIR" ] && ${matchResult.value}"""
+            }
+            
+            if (patched != content) {
+                // Preserve the original execute permission
+                val wasExecutable = runScriptFile.canExecute()
+                runScriptFile.writeText(patched)
+                if (wasExecutable) {
+                    runScriptFile.setExecutable(true, true)
+                }
+                Log.i(TAG, "Patched run.sh to respect externally-set PROOT_TMP_DIR")
+            } else {
+                Log.i(TAG, "run.sh already patched or has different format")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to patch run.sh: ${e.message}")
         }
     }
 
