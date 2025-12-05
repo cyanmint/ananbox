@@ -140,11 +140,12 @@ class SettingsActivity : AppCompatActivity() {
 
             // Local mode options
             val localJniOption = preferenceScreen.findPreference<Preference>(getString(R.string.settings_local_jni_key))
+            val shutdownJniOption = preferenceScreen.findPreference<Preference>(getString(R.string.settings_shutdown_jni_key))
             val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
             
-            // Remote mode toggles
-            val remoteStreamingToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_remote_streaming_key))
-            val remoteScrcpyToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_remote_scrcpy_key))
+            // Remote mode options (now click actions, not toggles)
+            val remoteStreamingOption = preferenceScreen.findPreference<Preference>(getString(R.string.settings_remote_streaming_key))
+            val remoteScrcpyOption = preferenceScreen.findPreference<Preference>(getString(R.string.settings_remote_scrcpy_key))
             
             // Local settings
             val localPort = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_port_key))
@@ -166,10 +167,8 @@ class SettingsActivity : AppCompatActivity() {
 
             // Handle local JNI option - on click, connect immediately
             localJniOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
-                // Disable other toggles
+                // Disable local server toggle
                 localServerToggle?.isChecked = false
-                remoteStreamingToggle?.isChecked = false
-                remoteScrcpyToggle?.isChecked = false
                 
                 // Save connection mode preference
                 PreferenceManager.getDefaultSharedPreferences(requireContext())
@@ -183,23 +182,28 @@ class SettingsActivity : AppCompatActivity() {
                 true
             }
             
-            // Handle local server toggle - runs in background
+            // Handle shutdown JNI container option
+            shutdownJniOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                Anbox.stopRuntime()
+                Anbox.stopContainer()
+                Toast.makeText(activity, getString(R.string.jni_container_stopped), Toast.LENGTH_SHORT).show()
+                true
+            }
+            
+            // Handle local server toggle - starts in background, does NOT connect immediately
             localServerToggle?.onPreferenceChangeListener = Preference.OnPreferenceChangeListener { _, newValue ->
                 val enabled = newValue as Boolean
                 if (enabled) {
-                    // Disable other toggles
-                    remoteStreamingToggle?.isChecked = false
-                    remoteScrcpyToggle?.isChecked = false
-                    
                     // Save connection mode preference
                     PreferenceManager.getDefaultSharedPreferences(requireContext())
                         .edit()
                         .putString(getString(R.string.settings_connection_mode_key), MODE_LOCAL_SERVER)
                         .apply()
                     
-                    // Start local server in background
+                    // Start local server in background (no MainActivity launch)
                     Toast.makeText(activity, getString(R.string.embedded_server_starting), Toast.LENGTH_SHORT).show()
-                    startActivity(Intent(activity, MainActivity::class.java))
+                    // The server will be started by MainActivity when user navigates to it
+                    // or we could start a background service here
                 } else {
                     // Stop server
                     Anbox.stopRuntime()
@@ -209,47 +213,35 @@ class SettingsActivity : AppCompatActivity() {
                 true
             }
             
-            // Handle remote streaming toggle
-            remoteStreamingToggle?.onPreferenceChangeListener = Preference.OnPreferenceChangeListener { _, newValue ->
-                val enabled = newValue as Boolean
-                if (enabled) {
-                    // Disable other toggles
-                    localServerToggle?.isChecked = false
-                    remoteScrcpyToggle?.isChecked = false
-                    
-                    // Save connection mode preference
-                    PreferenceManager.getDefaultSharedPreferences(requireContext())
-                        .edit()
-                        .putString(getString(R.string.settings_connection_mode_key), MODE_REMOTE_LEGACY)
-                        .apply()
-                    
-                    // Start streaming connection
-                    startActivity(Intent(activity, MainActivity::class.java))
-                } else {
-                    Toast.makeText(activity, getString(R.string.remote_disconnected), Toast.LENGTH_SHORT).show()
-                }
+            // Handle remote streaming option - click to connect
+            remoteStreamingOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                // Disable local server toggle
+                localServerToggle?.isChecked = false
+                
+                // Save connection mode preference
+                PreferenceManager.getDefaultSharedPreferences(requireContext())
+                    .edit()
+                    .putString(getString(R.string.settings_connection_mode_key), MODE_REMOTE_LEGACY)
+                    .apply()
+                
+                // Start streaming connection
+                startActivity(Intent(activity, MainActivity::class.java))
                 true
             }
             
-            // Handle remote scrcpy toggle
-            remoteScrcpyToggle?.onPreferenceChangeListener = Preference.OnPreferenceChangeListener { _, newValue ->
-                val enabled = newValue as Boolean
-                if (enabled) {
-                    // Disable other toggles
-                    localServerToggle?.isChecked = false
-                    remoteStreamingToggle?.isChecked = false
-                    
-                    // Save connection mode preference
-                    PreferenceManager.getDefaultSharedPreferences(requireContext())
-                        .edit()
-                        .putString(getString(R.string.settings_connection_mode_key), MODE_REMOTE_SCRCPY)
-                        .apply()
-                    
-                    // Start scrcpy connection
-                    startActivity(Intent(activity, MainActivity::class.java))
-                } else {
-                    Toast.makeText(activity, getString(R.string.scrcpy_disconnected), Toast.LENGTH_SHORT).show()
-                }
+            // Handle remote scrcpy option - click to connect
+            remoteScrcpyOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                // Disable local server toggle
+                localServerToggle?.isChecked = false
+                
+                // Save connection mode preference
+                PreferenceManager.getDefaultSharedPreferences(requireContext())
+                    .edit()
+                    .putString(getString(R.string.settings_connection_mode_key), MODE_REMOTE_SCRCPY)
+                    .apply()
+                
+                // Start scrcpy connection
+                startActivity(Intent(activity, MainActivity::class.java))
                 true
             }
 

@@ -11,6 +11,11 @@
             app:title="@string/settings_local_jni_title"
             app:summary="@string/settings_local_jni_summary"/>
 
+        <Preference
+            app:key="@string/settings_shutdown_jni_key"
+            app:title="@string/settings_shutdown_jni_title"
+            app:summary="@string/settings_shutdown_jni_summary"/>
+
         <SwitchPreferenceCompat
             app:key="@string/settings_local_server_key"
             app:title="@string/settings_local_server_title"
@@ -43,19 +48,15 @@
         app:key="remote_mode_category"
         app:title="@string/settings_remote_category">
 
-        <SwitchPreferenceCompat
+        <Preference
             app:key="@string/settings_remote_streaming_key"
             app:title="@string/settings_remote_streaming_title"
-            app:summaryOn="@string/settings_remote_streaming_summary_on"
-            app:summaryOff="@string/settings_remote_streaming_summary_off"
-            app:defaultValue="false"/>
+            app:summary="@string/settings_remote_streaming_summary"/>
 
-        <SwitchPreferenceCompat
+        <Preference
             app:key="@string/settings_remote_scrcpy_key"
             app:title="@string/settings_remote_scrcpy_title"
-            app:summaryOn="@string/settings_remote_scrcpy_summary_on"
-            app:summaryOff="@string/settings_remote_scrcpy_summary_off"
-            app:defaultValue="false"/>
+            app:summary="@string/settings_remote_scrcpy_summary"/>
 
         <EditTextPreference
             app:key="@string/settings_remote_address_key"

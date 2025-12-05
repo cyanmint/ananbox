@@ -42,6 +42,9 @@
     <string name="jni_container_started">Container started via JNI</string>
     <string name="jni_container_stopped">Container stopped</string>
     <string name="jni_container_failed">Failed to start container: %1$s</string>
+    <string name="settings_shutdown_jni_key">shutdown_jni</string>
+    <string name="settings_shutdown_jni_title">Shutdown JNI Container</string>
+    <string name="settings_shutdown_jni_summary">Stop the running JNI container</string>
     
     <!-- Remote Mode Settings (foldable group) -->
     <string name="settings_remote_category">Remote Mode</string>
