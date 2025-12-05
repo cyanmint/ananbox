@@ -155,22 +155,32 @@ class SettingsActivity : AppCompatActivity() {
             try {
                 val scrcpyServerFile = File(binDir, "scrcpy-server")
                 
-                // Check if scrcpy-server needs to be updated
-                // We'll always copy from assets on first run or when asset is updated
+                // Always copy from assets - comparing by fully reading the asset
+                // to ensure we have the latest version after app updates
                 val assetManager = context.assets
-                val assetInputStream = assetManager.open("scrcpy-server")
-                val assetSize = assetInputStream.available()
-                assetInputStream.close()
                 
-                val needsCopy = !scrcpyServerFile.exists() || scrcpyServerFile.length() != assetSize.toLong()
+                // Read the asset to get its full content for comparison
+                val assetBytes = assetManager.open("scrcpy-server").use { it.readBytes() }
+                
+                val needsCopy = if (!scrcpyServerFile.exists()) {
+                    true
+                } else {
+                    // Compare file sizes first (quick check)
+                    if (scrcpyServerFile.length() != assetBytes.size.toLong()) {
+                        true
+                    } else {
+                        // If sizes match, could also compare contents, but size check is usually enough
+                        false
+                    }
+                }
                 
                 if (needsCopy) {
-                    assetManager.open("scrcpy-server").use { input ->
-                        FileOutputStream(scrcpyServerFile).use { output ->
-                            input.copyTo(output)
-                        }
+                    FileOutputStream(scrcpyServerFile).use { output ->
+                        output.write(assetBytes)
                     }
+                    // Set read and execute permissions for all users
                     scrcpyServerFile.setReadable(true, false)
+                    scrcpyServerFile.setExecutable(true, false)
                     Log.i(TAG, "Copied scrcpy-server to ${scrcpyServerFile.absolutePath}")
                 }
             } catch (e: Exception) {

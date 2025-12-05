@@ -203,6 +203,11 @@ The project uses Gradle for building. C++ warnings from third-party code are sup
 - Improved symlink handling during rootfs extraction with better validation
 - Fixed symlink creation to properly handle relative paths
 
+#### New Features
+- Added scrcpy-server v3.3.3 for scrcpy connection support
+- Added AdbHelper class for pushing files and executing commands via ADB protocol
+- Support for pushing scrcpy-server to container and starting it via adb
+
 #### Build Improvements
 - Vendored proot source code to make the project self-contained
 - Disabled proot Python extension for Android compatibility
