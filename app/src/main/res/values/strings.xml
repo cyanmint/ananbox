@@ -43,10 +43,13 @@
     <string name="jni_container_starting">Starting container via JNI…</string>
     <string name="jni_container_started">Container started via JNI</string>
     <string name="jni_container_stopped">Container stopped</string>
+    <string name="jni_container_stopping_sigint">Sending SIGINT… Click again for SIGTERM</string>
+    <string name="jni_container_stopping_sigterm">Sending SIGTERM… Click again to force kill</string>
+    <string name="jni_container_stopped_sigkill">Container killed (SIGKILL)</string>
     <string name="jni_container_failed">Failed to start container: %1$s</string>
     <string name="settings_shutdown_jni_key">shutdown_jni</string>
     <string name="settings_shutdown_jni_title">Shutdown JNI Container</string>
-    <string name="settings_shutdown_jni_summary">Stop the running JNI container</string>
+    <string name="settings_shutdown_jni_summary">Click: SIGINT → SIGTERM → SIGKILL</string>
     
     <!-- Remote Mode Settings (not foldable) -->
     <string name="settings_remote_category">Remote Mode</string>

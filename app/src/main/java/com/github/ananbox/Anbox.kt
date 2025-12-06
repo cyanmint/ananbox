@@ -12,6 +12,10 @@ object Anbox: View.OnTouchListener {
     init {
         System.loadLibrary("anbox")
     }
+    
+    // Track shutdown attempt count: 0=none, 1=SIGINT sent, 2=SIGTERM sent
+    @Volatile
+    private var shutdownAttemptCount = 0
 
     external fun stringFromJNI(): String
     external fun setPath(path: String)
@@ -28,11 +32,59 @@ object Anbox: View.OnTouchListener {
     external fun pushFingerDown(x: Int, y: Int, fingerId: Int)
     external fun pushFingerMotion(x: Int, y: Int, fingerId: Int)
 
-    fun stopContainer() {
-        Log.d("Anbox", "stopContainer")
-        // TODO: better way to stop the container
-        Runtime.getRuntime().exec("killall init")
-        exitProcess(0)
+    /**
+     * Stop the container with escalating signals:
+     * - First click: SIGINT (Ctrl+C) - allows graceful cleanup
+     * - Second click: SIGTERM - stronger termination request
+     * - Third click: SIGKILL - forceful immediate termination
+     * Returns the signal that was sent: "SIGINT", "SIGTERM", or "SIGKILL"
+     */
+    fun stopContainer(): String {
+        Log.d("Anbox", "stopContainer - shutdownAttemptCount=$shutdownAttemptCount")
+        
+        val signal = when (shutdownAttemptCount) {
+            0 -> {
+                // First click: send SIGINT (2) - like Ctrl+C
+                shutdownAttemptCount = 1
+                try {
+                    Runtime.getRuntime().exec(arrayOf("sh", "-c", "kill -INT \$(pidof init) 2>/dev/null || killall -INT init 2>/dev/null"))
+                    Log.d("Anbox", "Sent SIGINT to init")
+                } catch (e: Exception) {
+                    Log.e("Anbox", "Failed to send SIGINT to init", e)
+                }
+                "SIGINT"
+            }
+            1 -> {
+                // Second click: send SIGTERM (15)
+                shutdownAttemptCount = 2
+                try {
+                    Runtime.getRuntime().exec(arrayOf("sh", "-c", "kill -TERM \$(pidof init) 2>/dev/null || killall -TERM init 2>/dev/null"))
+                    Log.d("Anbox", "Sent SIGTERM to init")
+                } catch (e: Exception) {
+                    Log.e("Anbox", "Failed to send SIGTERM to init", e)
+                }
+                "SIGTERM"
+            }
+            else -> {
+                // Third+ click: send SIGKILL (9) - forceful
+                shutdownAttemptCount = 0 // Reset for next time
+                try {
+                    Runtime.getRuntime().exec(arrayOf("sh", "-c", "kill -KILL \$(pidof init) 2>/dev/null || killall -KILL init 2>/dev/null"))
+                    Log.d("Anbox", "Sent SIGKILL to init")
+                } catch (e: Exception) {
+                    Log.e("Anbox", "Failed to send SIGKILL to init", e)
+                }
+                "SIGKILL"
+            }
+        }
+        return signal
+    }
+    
+    /**
+     * Reset the shutdown state (e.g., when container is started again)
+     */
+    fun resetShutdownState() {
+        shutdownAttemptCount = 0
     }
 
     override fun onTouch(v: View, e: MotionEvent): Boolean {

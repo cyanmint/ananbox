@@ -529,10 +529,15 @@ class MainActivity : AppCompatActivity() {
             }
             
             // Handle shutdown JNI container option
+            // First click: SIGINT (Ctrl+C), second: SIGTERM, third: SIGKILL
             shutdownJniOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
                 Anbox.stopRuntime()
-                Anbox.stopContainer()
-                Toast.makeText(activity, getString(R.string.jni_container_stopped), Toast.LENGTH_SHORT).show()
+                val signal = Anbox.stopContainer()
+                when (signal) {
+                    "SIGINT" -> Toast.makeText(activity, getString(R.string.jni_container_stopping_sigint), Toast.LENGTH_SHORT).show()
+                    "SIGTERM" -> Toast.makeText(activity, getString(R.string.jni_container_stopping_sigterm), Toast.LENGTH_SHORT).show()
+                    "SIGKILL" -> Toast.makeText(activity, getString(R.string.jni_container_stopped_sigkill), Toast.LENGTH_SHORT).show()
+                }
                 true
             }
             

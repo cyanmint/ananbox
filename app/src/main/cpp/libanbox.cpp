@@ -422,7 +422,7 @@ static void print_server_usage(const char* program) {
               << "  -A, --adb-address <ip>  ADB listen address\n"
               << "  -D, --adb-port <port>   ADB listen port (default: 5555)\n"
               << "  -v, --verbose           Enable verbose logging\n"
-              << "  --help                  Show this help message\n"
+              << "  -?, --help              Show this help message\n"
               << std::endl;
 }
 
@@ -477,13 +477,13 @@ int main(int argc, char* argv[]) {
         {"adb-port",    required_argument, 0, 'D'},
         {"adb-socket",  required_argument, 0, 'S'},
         {"verbose", no_argument,       0, 'v'},
-        {"help",    no_argument,       0, 0},
+        {"help",    no_argument,       0, '?'},
         {0, 0, 0, 0}
     };
 
     int opt;
     int option_index = 0;
-    while ((opt = getopt_long(argc, argv, "a:p:w:h:d:b:P:s:t:A:D:S:v", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "a:p:w:h:d:b:P:s:t:A:D:S:v?", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'a': listen_address = optarg; break;
             case 'p': listen_port = static_cast<uint16_t>(std::stoi(optarg)); break;
@@ -498,12 +498,9 @@ int main(int argc, char* argv[]) {
             case 'D': adb_port = static_cast<uint16_t>(std::stoi(optarg)); break;
             case 'S': adb_socket_path = optarg; break;
             case 'v': break;
-            case 0:
-                if (std::string(long_options[option_index].name) == "help") {
-                    print_server_usage(argv[0]);
-                    return 0;
-                }
-                break;
+            case '?':
+                print_server_usage(argv[0]);
+                return 0;
             default:
                 print_server_usage(argv[0]);
                 return 1;
