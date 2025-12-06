@@ -18,9 +18,9 @@
         android:theme="@style/Theme.Ananbox"
         tools:targetApi="31">
         <activity
-            android:name=".SettingsActivity"
+            android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/title_activity_settings"
+            android:label="@string/title_activity_main"
             android:theme="@style/Theme.AppCompat.Light">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -62,7 +62,7 @@
 
 
         <activity
-            android:name=".MainActivity"
+            android:name=".RendererActivity"
             android:configChanges="orientation|keyboardHidden"
             android:exported="false"
             android:resizeableActivity="false"

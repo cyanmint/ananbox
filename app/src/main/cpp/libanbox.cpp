@@ -217,7 +217,6 @@ Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     
     // Extract the native library directory from the proot path
     // proot path is like "/data/app/.../lib/arm64/libproot.so"
-    // We want the directory part which is executable (unlike filesDir/tmp which has noexec)
     char native_lib_dir[PATH_MAX];
     size_t proot_len = strlen(proot);
     
@@ -239,10 +238,19 @@ Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
         _exit(1);
     }
     
-    // Set PROOT_TMP_DIR to native library directory which has exec permission
-    // This is critical because proot needs to execute its loader from this directory
-    // The app's filesDir is mounted with noexec flag on modern Android
-    setenv("PROOT_TMP_DIR", native_lib_dir, 1);
+    // Set PROOT_TMP_DIR to app's tmp directory (writable but noexec)
+    // This is used for proot's temporary files that don't need exec permission
+    char tmp_dir[PATH_MAX];
+    snprintf(tmp_dir, sizeof(tmp_dir), "%s/tmp", path);
+    setenv("PROOT_TMP_DIR", tmp_dir, 1);
+    
+    // Set PROOT_LOADER to the pre-built loader in the native library directory
+    // The native lib dir has exec permission, so the loader can run from there
+    // This bypasses proot's need to extract the loader to PROOT_TMP_DIR
+    char loader_path[PATH_MAX];
+    snprintf(loader_path, sizeof(loader_path), "%s/libproot-loader.so", native_lib_dir);
+    setenv("PROOT_LOADER", loader_path, 1);
+    __android_log_print(ANDROID_LOG_INFO, TAG, "Using PROOT_LOADER: %s", loader_path);
     
     // Use snprintf for safe command string construction
     snprintf(cmd, sizeof(cmd), "sh %s/rootfs/run.sh %s %s", path, path, proot);
@@ -413,8 +421,9 @@ static void print_server_usage(const char* program) {
               << "  -t, --tmpdir <path>     Temporary directory for proot\n"
               << "  -A, --adb-address <ip>  ADB listen address\n"
               << "  -D, --adb-port <port>   ADB listen port (default: 5555)\n"
+              << "  -S, --adb-socket <path> ADB socket path (default: /dev/socket/adbd)\n"
               << "  -v, --verbose           Enable verbose logging\n"
-              << "  --help                  Show this help message\n"
+              << "  -?, --help              Show this help message\n"
               << std::endl;
 }
 
@@ -469,13 +478,13 @@ int main(int argc, char* argv[]) {
         {"adb-port",    required_argument, 0, 'D'},
         {"adb-socket",  required_argument, 0, 'S'},
         {"verbose", no_argument,       0, 'v'},
-        {"help",    no_argument,       0, 0},
+        {"help",    no_argument,       0, '?'},
         {0, 0, 0, 0}
     };
 
     int opt;
     int option_index = 0;
-    while ((opt = getopt_long(argc, argv, "a:p:w:h:d:b:P:s:t:A:D:S:v", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "a:p:w:h:d:b:P:s:t:A:D:S:v?", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'a': listen_address = optarg; break;
             case 'p': listen_port = static_cast<uint16_t>(std::stoi(optarg)); break;
@@ -490,12 +499,9 @@ int main(int argc, char* argv[]) {
             case 'D': adb_port = static_cast<uint16_t>(std::stoi(optarg)); break;
             case 'S': adb_socket_path = optarg; break;
             case 'v': break;
-            case 0:
-                if (std::string(long_options[option_index].name) == "help") {
-                    print_server_usage(argv[0]);
-                    return 0;
-                }
-                break;
+            case '?':
+                print_server_usage(argv[0]);
+                return 0;
             default:
                 print_server_usage(argv[0]);
                 return 1;
@@ -667,6 +673,16 @@ int main(int argc, char* argv[]) {
                 exit(1);
             }
             setenv("PROOT_TMP_DIR", tmp_dir.c_str(), 1);
+            
+            // Forward PROOT_LOADER if set by parent process
+            // This allows using a pre-built loader binary from a directory with exec permission
+            // (like the native library directory) instead of extracting to PROOT_TMP_DIR
+            const char* proot_loader = getenv("PROOT_LOADER");
+            if (proot_loader != nullptr && proot_loader[0] != '\0') {
+                setenv("PROOT_LOADER", proot_loader, 1);
+                std::cout << "Using PROOT_LOADER: " << proot_loader << std::endl;
+            }
+            
             const char* args[] = {"sh", startup_script.c_str(), base_path.c_str(), proot_path.c_str(), nullptr};
             execvp("sh", const_cast<char* const*>(args));
             exit(1);

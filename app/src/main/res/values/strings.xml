@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">Ananbox</string>
     <string name="title_settings">Settings</string>
-    <string name="title_activity_settings">SettingsActivity</string>
+    <string name="title_activity_main">Ananbox</string>
     <string name="rom_installer_title">Install rom</string>
     <string name="rom_installer_message">Please select the rootfs.tar.gz file on your phone</string>
     <string name="rom_installer_install">Select a file</string>
@@ -43,10 +43,18 @@
     <string name="jni_container_starting">Starting container via JNI…</string>
     <string name="jni_container_started">Container started via JNI</string>
     <string name="jni_container_stopped">Container stopped</string>
+    <string name="jni_container_stopping_sigint">Sending SIGINT… Click again for SIGTERM</string>
+    <string name="jni_container_stopping_sigterm">Sending SIGTERM… Click again to force kill</string>
+    <string name="jni_container_stopped_sigkill">Container killed (SIGKILL)</string>
     <string name="jni_container_failed">Failed to start container: %1$s</string>
     <string name="settings_shutdown_jni_key">shutdown_jni</string>
     <string name="settings_shutdown_jni_title">Shutdown JNI Container</string>
-    <string name="settings_shutdown_jni_summary">Stop the running JNI container</string>
+    <string name="settings_shutdown_jni_summary">Click: SIGINT → SIGTERM → SIGKILL</string>
+    
+    <!-- Local Server Shutdown Messages -->
+    <string name="local_server_stopping_sigint">Sending SIGINT… Toggle off again for SIGTERM</string>
+    <string name="local_server_stopping_sigterm">Sending SIGTERM… Toggle off again to force kill</string>
+    <string name="local_server_stopped_sigkill">Server killed (SIGKILL)</string>
     
     <!-- Remote Mode Settings (not foldable) -->
     <string name="settings_remote_category">Remote Mode</string>
@@ -86,9 +94,9 @@
     <string name="settings_clear_logs_failed">Failed to clear logs</string>
     <string name="settings_about_key">about</string>
     <string name="settings_about_title">About</string>
-    <string name="settings_about_summary">App info and copyright</string>
+    <string name="settings_about_summary">App info, licenses, and copyright</string>
     <string name="about_dialog_title">About Ananbox</string>
-    <string name="about_dialog_message">Ananbox v%1$s\n\nAn Android container solution.\n\n© 2024 Ananbox Project\nLicensed under Apache License 2.0</string>
+    <string name="about_dialog_message">Ananbox v%1$s\n\nAnother rootless Android container on Android.\n\nLicensed under GPL v2 (due to PRoot dependency)\n\n⚠️ AI-GENERATED CONTENT NOTICE ⚠️\nThis app is a fork of https://github.com/Ananbox/ananbox\nModifications and additions made by GitHub Copilot (AI) are not subject to copyright protection. AI-generated content is dedicated to the public domain.\n\n📦 DEPENDENCIES AND LICENSES 📦\n\n• Anbox - Apache License 2.0\n  © 2016-2017 Canonical Ltd.\n  Android container runtime\n\n• PRoot - GPL v2\n  © Cédric VINCENT\n  User-space implementation of chroot\n\n• Boost C++ Libraries - Boost License 1.0\n  © Various Contributors\n  Portable C++ source libraries\n\n• scrcpy-server - Apache License 2.0\n  © 2018-2024 Genymobile\n  Display and control Android devices\n\n• AndroidX Libraries - Apache License 2.0\n  © Google LLC\n  Android support libraries\n\n• Apache Commons Compress - Apache License 2.0\n  © Apache Software Foundation\n  Working with archive formats\n\n• libpng - libpng License\n  © 1995-2024 PNG Authors\n  PNG reference library\n\n• backward-cpp - MIT License\n  Stack trace library\n\nNote: Due to GPL v2 dependency (PRoot), this project as a whole is licensed under GPL v2.\n\nFor full license texts, see the source repository.</string>
     
     <!-- Connection Status -->
     <string name="remote_connecting">Connecting to %1$s:%2$s…</string>

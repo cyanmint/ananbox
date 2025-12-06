@@ -10,9 +10,12 @@ android {
     defaultConfig {
         applicationId "com.github.ananbox"
         minSdk 24
-        targetSdk 34
-        versionCode 2
-        versionName "0.2.0"
+        // Target SDK 28 to bypass Android's W^X (Write XOR Execute) policy
+        // This allows executing binaries from the app's filesDir (like Termux on F-Droid)
+        // On SDK 29+, Android enforces noexec on app's private directories
+        targetSdk 28
+        versionCode 10
+        versionName "0.2.9"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 

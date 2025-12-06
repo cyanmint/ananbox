@@ -1,656 +1,1399 @@
-@file:Suppress("DEPRECATION")
 package com.github.ananbox
 
-import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.ProgressDialog
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.util.DisplayMetrics
 import android.util.Log
-import android.view.MotionEvent
-import android.view.SurfaceHolder
-import android.view.SurfaceView
-import android.view.View
+import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import com.github.ananbox.databinding.ActivityMainBinding
-import com.github.ananbox.scrcpy.ScrcpyClient
+import androidx.core.content.FileProvider
+import androidx.preference.EditTextPreference
+import androidx.preference.Preference
+import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.PreferenceManager
+import androidx.preference.SwitchPreferenceCompat
 import java.io.BufferedInputStream
+import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStreamReader
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import kotlin.concurrent.thread
-import kotlin.system.exitProcess
 
-
+@Suppress("DEPRECATION")
 class MainActivity : AppCompatActivity() {
 
-    private val TAG = "MainActivity"
-    private val READ_REQUEST_CODE = 2
-    private lateinit var mSurfaceView: SurfaceView
-    private var isRemoteMode = false
-    private var isEmbeddedServerMode = false
-    private var isScrcpyMode = false
-    private var remoteAddress = ""
-    private var remotePort = 5558
-    private var scrcpyPort = 27183
-    private var streamingClient: StreamingClient? = null
-    private var scrcpyClient: ScrcpyClient? = null
-    @Volatile
-    private var currentBitmap: Bitmap? = null
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var embeddedServerProcess: Process? = null
-    
-    private val mSurfaceCallback: SurfaceHolder.Callback = object : SurfaceHolder.Callback {
-        override fun surfaceCreated(holder: SurfaceHolder) {
-            if (isRemoteMode) {
-                if (isScrcpyMode) {
-                    // Scrcpy mode: use scrcpy client for video decoding
-                    connectViaScrcpy(holder)
-                } else {
-                    // Remote mode: connect to streaming server
-                    connectToRemoteServer(holder)
-                }
-            } else if (isEmbeddedServerMode) {
-                // Embedded server mode: start local server then connect
-                startEmbeddedServerAndConnect(holder)
-            } else {
-                // JNI mode: start local container directly
-                startLocalContainerJni(holder)
-            }
-        }
-
-        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-            Log.i(
-                TAG,
-                "surfaceChanged: " + mSurfaceView.width + "x" + mSurfaceView.height
-            )
-        }
-
-        override fun surfaceDestroyed(holder: SurfaceHolder) {
-            if (isScrcpyMode) {
-                scrcpyClient?.disconnect()
-            } else if (isRemoteMode || isEmbeddedServerMode) {
-                streamingClient?.disconnect()
-            } else {
-                Anbox.destroySurface()
-            }
-            Log.i(TAG, "surfaceDestroyed!")
-        }
-    }
-    
-    private fun startLocalContainerJni(holder: SurfaceHolder) {
-        val surface = holder.surface
-        val windowManager = windowManager
-        val defaultDisplay = windowManager.defaultDisplay
-        val displayMetrics = DisplayMetrics()
-        defaultDisplay.getRealMetrics(displayMetrics)
-        val dpi = displayMetrics.densityDpi
-        Log.i(TAG, "Runtime initializing (JNI mode)..")
-        if(Anbox.initRuntime(mSurfaceView.width, mSurfaceView.height, dpi)) {
-            Anbox.createSurface(surface)
-            // Create required directories before starting runtime
-            ensureRequiredDirectories()
-            Anbox.startRuntime()
-            Anbox.startContainer(applicationContext.applicationInfo.nativeLibraryDir + "/libproot.so")
-        }
-        else {
-            Anbox.createSurface(surface)
-        }
-    }
-    
-    private fun startEmbeddedServerAndConnect(holder: SurfaceHolder) {
-        val displayMetrics = DisplayMetrics()
-        windowManager.defaultDisplay.getRealMetrics(displayMetrics)
-        val dpi = displayMetrics.densityDpi
+    companion object {
+        private const val TAG = "MainActivity"
+        private const val ROOTFS_INSTALL_REQUEST_CODE = 100
         
-        val localServerAddress = SettingsActivity.getLocalServerAddress(this)
-        val localPort = SettingsActivity.getLocalServerPort(this)
-        val localAdbAddress = SettingsActivity.getLocalAdbAddress(this)
-        val localAdbPort = SettingsActivity.getLocalAdbPort(this)
+        // Unix permission bit for owner execute (binary 0b001_000_000, octal 0100, decimal 64)
+        private const val OWNER_EXECUTE_PERMISSION = 0b001_000_000
         
-        Log.i(TAG, "Starting embedded server on $localServerAddress:$localPort (ADB: $localAdbAddress:$localAdbPort)")
+        // Embedded server process (shared across activities)
+        @Volatile
+        private var embeddedServerProcess: Process? = null
         
-        // Ensure required directories exist
-        ensureRequiredDirectories()
+        // Track local server shutdown attempt count: 0=none, 1=SIGINT sent, 2=SIGTERM sent
+        @Volatile
+        private var localServerShutdownAttemptCount = 0
         
-        // Start the embedded server process
-        thread {
+        // Lock for synchronizing server start/stop
+        private val serverLock = Any()
+        
+        // Connection mode constants
+        const val MODE_LOCAL_JNI = "local_jni"
+        const val MODE_LOCAL_SERVER = "local_server"
+        const val MODE_REMOTE_LEGACY = "remote_legacy"
+        const val MODE_REMOTE_SCRCPY = "remote_scrcpy"
+        
+        fun isServerRunning(): Boolean {
+            return embeddedServerProcess?.isAlive == true
+        }
+        
+        /**
+         * Reset local server shutdown state (e.g., when server is started)
+         */
+        fun resetLocalServerShutdownState() {
+            localServerShutdownAttemptCount = 0
+        }
+        
+        /**
+         * Ensures libanbox.so and libproot.so are linked/copied to internal directory
+         * Returns paths to the internal copies
+         */
+        private fun ensureServerBinaries(context: Context): Pair<String, String>? {
             try {
-                // Use libanbox.so which is built as a PIE executable that can run standalone
-                val serverPath = applicationInfo.nativeLibraryDir + "/libanbox.so"
-                val prootPath = applicationInfo.nativeLibraryDir + "/libproot.so"
-                val basePath = filesDir.absolutePath
+                val appInfo = context.applicationInfo
+                val filesDir = context.filesDir
+                val binDir = File(filesDir, "bin")
+                binDir.mkdirs()
                 
-                // Ensure the server binary has execute permission
-                val serverFile = File(serverPath)
-                if (serverFile.exists() && !serverFile.canExecute()) {
-                    serverFile.setExecutable(true, true)
-                    Log.i(TAG, "Set execute permission on $serverPath")
-                }
+                val nativeLibDir = appInfo.nativeLibraryDir
                 
-                // Use nativeLibraryDir for PROOT_TMP_DIR since it's mounted with exec permission
-                // The app's filesDir is mounted with noexec, preventing proot's loader from being executed
-                val prootTmpDir = applicationInfo.nativeLibraryDir
+                // List of all .so files to symlink from nativeLibraryDir to binDir
+                val soFiles = listOf("libanbox.so", "libproot.so", "libproot-loader.so")
                 
-                val command = mutableListOf(
-                    serverPath,
-                    "-b", basePath,
-                    "-P", prootPath,
-                    "-a", localServerAddress,
-                    "-p", localPort.toString(),
-                    "-w", mSurfaceView.width.toString(),
-                    "-h", mSurfaceView.height.toString(),
-                    "-d", dpi.toString(),
-                    "-A", localAdbAddress,
-                    "-D", localAdbPort.toString(),
-                    "-t", prootTmpDir  // Explicitly pass tmp dir with exec permission
-                )
-                
-                Log.i(TAG, "Executing: ${command.joinToString(" ")}")
-                
-                val processBuilder = ProcessBuilder(command)
-                processBuilder.environment()["PROOT_TMP_DIR"] = prootTmpDir
-                processBuilder.redirectErrorStream(true)
-                
-                embeddedServerProcess = processBuilder.start()
-                
-                mainHandler.post {
-                    Toast.makeText(this@MainActivity, 
-                        getString(R.string.embedded_server_started, localPort),
-                        Toast.LENGTH_SHORT).show()
-                }
-                
-                // Wait a moment for the server to start, then connect
-                Thread.sleep(2000)
-                
-                mainHandler.post {
-                    remoteAddress = localServerAddress
-                    remotePort = localPort
-                    connectToRemoteServer(holder)
-                }
-                
-                // Read server output in background and save to log file
-                val serverLogFile = File(filesDir, "server.log")
-                val logWriter = serverLogFile.bufferedWriter()
-                val reader = embeddedServerProcess?.inputStream?.bufferedReader()
-                try {
-                    reader?.forEachLine { line ->
-                        Log.i(TAG, "Server: $line")
-                        logWriter.write(line)
-                        logWriter.newLine()
-                        logWriter.flush()
+                for (soFile in soFiles) {
+                    val srcPath = "$nativeLibDir/$soFile"
+                    val destFile = File(binDir, soFile)
+                    val srcFile = File(srcPath)
+                    
+                    // Check if symlink needs to be created or recreated
+                    // A dangling symlink (after app upgrade) will have exists()=false but the file path exists
+                    val needsSymlink = when {
+                        !srcFile.exists() -> {
+                            Log.w(TAG, "Source file does not exist: $srcPath")
+                            false
+                        }
+                        !destFile.exists() -> {
+                            // Destination doesn't exist - check if it's a dangling symlink
+                            try {
+                                // Try to delete in case it's a dangling symlink
+                                destFile.delete()
+                            } catch (e: Exception) {
+                                // Ignore
+                            }
+                            true
+                        }
+                        else -> {
+                            // Check if it's a valid symlink pointing to the right target
+                            try {
+                                val canonicalDest = destFile.canonicalPath
+                                val canonicalSrc = srcFile.canonicalPath
+                                if (canonicalDest != canonicalSrc) {
+                                    // Symlink points to wrong target (possibly after app upgrade)
+                                    destFile.delete()
+                                    true
+                                } else {
+                                    false
+                                }
+                            } catch (e: Exception) {
+                                // Error checking symlink - recreate it
+                                destFile.delete()
+                                true
+                            }
+                        }
                     }
-                } finally {
-                    logWriter.close()
+                    
+                    if (needsSymlink) {
+                        // Create symlink using Os.symlink
+                        try {
+                            android.system.Os.symlink(srcPath, destFile.absolutePath)
+                            Log.i(TAG, "Created symlink: ${destFile.absolutePath} -> $srcPath")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to create symlink for $soFile", e)
+                            // Fallback: copy the file if symlink fails
+                            srcFile.copyTo(destFile, overwrite = true)
+                            destFile.setReadable(true, true)
+                            destFile.setWritable(true, true)
+                            destFile.setExecutable(true, true)
+                            Log.i(TAG, "Fallback: copied $soFile to ${destFile.absolutePath}")
+                        }
+                    }
                 }
                 
+                // Copy scrcpy-server from assets to bin directory
+                ensureScrcpyServer(context, binDir)
+                
+                val destServerPath = File(binDir, "libanbox.so")
+                val destProotPath = File(binDir, "libproot.so")
+                
+                return Pair(destServerPath.absolutePath, destProotPath.absolutePath)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start embedded server", e)
-                mainHandler.post {
-                    Toast.makeText(this@MainActivity, 
-                        getString(R.string.embedded_server_failed, e.message),
-                        Toast.LENGTH_LONG).show()
+                Log.e(TAG, "Failed to ensure server binaries", e)
+                return null
+            }
+        }
+        
+        /**
+         * Copy scrcpy-server from assets to the bin directory.
+         * This is needed for adb to push the scrcpy server into the container.
+         */
+        private fun ensureScrcpyServer(context: Context, binDir: File) {
+            try {
+                val scrcpyServerFile = File(binDir, "scrcpy-server")
+                val assetManager = context.assets
+                
+                // Get asset size without reading entire file into memory
+                val assetSize = assetManager.openFd("scrcpy-server").use { it.length }
+                
+                val needsCopy = if (!scrcpyServerFile.exists()) {
+                    true
+                } else {
+                    // Compare file sizes (quick check without reading file contents)
+                    scrcpyServerFile.length() != assetSize
+                }
+                
+                if (needsCopy) {
+                    // Only read the asset when we actually need to copy it
+                    assetManager.open("scrcpy-server").use { input ->
+                        FileOutputStream(scrcpyServerFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    // Set read and execute permissions for owner only
+                    scrcpyServerFile.setReadable(true, true)
+                    scrcpyServerFile.setExecutable(true, true)
+                    Log.i(TAG, "Copied scrcpy-server to ${scrcpyServerFile.absolutePath}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to copy scrcpy-server from assets", e)
+            }
+        }
+        
+        fun startEmbeddedServer(context: Context): Boolean {
+            synchronized(serverLock) {
+                if (isServerRunning()) {
+                    Log.i(TAG, "Embedded server already running")
+                    return true
+                }
+                
+                try {
+                    val filesDir = context.filesDir
+                    val basePath = filesDir.absolutePath
+                    
+                    // Ensure binaries are in internal directory
+                    val binaries = ensureServerBinaries(context)
+                    if (binaries == null) {
+                        Log.e(TAG, "Failed to setup server binaries")
+                        return false
+                    }
+                    val (serverPath, prootPath) = binaries
+                    
+                    // Use filesDir/tmp for proot temporary files (writable)
+                    // Note: This directory has noexec flag on modern Android, but we use
+                    // PROOT_LOADER env variable to point to the pre-built loader in nativeLibraryDir
+                    // which has execute permission. This avoids proot needing to extract+execute
+                    // the loader from PROOT_TMP_DIR.
+                    val prootTmpDir = File(filesDir, "tmp")
+                    prootTmpDir.mkdirs()
+                    
+                    // Get the path to the proot loader in the native library directory
+                    // The loader binary is bundled as libproot-loader.so in the APK
+                    // The nativeLibraryDir has execute permission, so the loader can run from there
+                    val nativeLibDir = context.applicationInfo.nativeLibraryDir
+                    val prootLoaderPath = "$nativeLibDir/libproot-loader.so"
+                    
+                    val localServerAddress = getLocalServerAddress(context)
+                    val localPort = getLocalServerPort(context)
+                    val localAdbAddress = getLocalAdbAddress(context)
+                    val localAdbPort = getLocalAdbPort(context)
+                    
+                    // Ensure the server binary has 700 permissions
+                    val serverFile = File(serverPath)
+                    val prootFile = File(prootPath)
+                    if (serverFile.exists() && !serverFile.canExecute()) {
+                        serverFile.setReadable(true, true)
+                        serverFile.setWritable(true, true)
+                        serverFile.setExecutable(true, true)
+                    }
+                    if (prootFile.exists() && !prootFile.canExecute()) {
+                        prootFile.setReadable(true, true)
+                        prootFile.setWritable(true, true)
+                        prootFile.setExecutable(true, true)
+                    }
+                    
+                    // Use default display dimensions for background server
+                    val defaultWidth = 1280
+                    val defaultHeight = 720
+                    val defaultDpi = 160
+                    
+                    val command = mutableListOf(
+                        serverPath,
+                        "-b", basePath,
+                        "-P", prootPath,
+                        "-a", localServerAddress,
+                        "-p", localPort.toString(),
+                        "-w", defaultWidth.toString(),
+                        "-h", defaultHeight.toString(),
+                        "-d", defaultDpi.toString(),
+                        "-A", localAdbAddress,
+                        "-D", localAdbPort.toString(),
+                        "-t", prootTmpDir.absolutePath
+                    )
+                    
+                    Log.i(TAG, "Starting embedded server: ${command.joinToString(" ")}")
+                    Log.i(TAG, "Using PROOT_LOADER: $prootLoaderPath")
+                    
+                    val processBuilder = ProcessBuilder(command)
+                    // Set PROOT_TMP_DIR to a writable directory for proot's temporary files
+                    processBuilder.environment()["PROOT_TMP_DIR"] = prootTmpDir.absolutePath
+                    // Set PROOT_LOADER to the pre-built loader in native lib directory (has exec permission)
+                    // This bypasses proot's need to extract the loader to PROOT_TMP_DIR
+                    processBuilder.environment()["PROOT_LOADER"] = prootLoaderPath
+                    processBuilder.redirectErrorStream(true)
+                    
+                    embeddedServerProcess = processBuilder.start()
+                    
+                    // Start a background thread to read server output with proper error handling
+                    thread {
+                        try {
+                            val serverLogFile = File(filesDir, "server.log")
+                            embeddedServerProcess?.inputStream?.bufferedReader()?.use { reader ->
+                                serverLogFile.bufferedWriter().use { logWriter ->
+                                    reader.forEachLine { line ->
+                                        Log.i(TAG, "Server: $line")
+                                        logWriter.write(line)
+                                        logWriter.newLine()
+                                        logWriter.flush()
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error reading/writing server output", e)
+                        }
+                    }
+                    
+                    Log.i(TAG, "Embedded server started on $localServerAddress:$localPort")
+                    return true
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to start embedded server", e)
+                    return false
                 }
             }
         }
-    }
-    
-    private fun stopEmbeddedServer() {
-        embeddedServerProcess?.let { process ->
-            Log.i(TAG, "Stopping embedded server...")
-            process.destroy()
-            embeddedServerProcess = null
-        }
-    }
-    
-    private fun connectViaScrcpy(holder: SurfaceHolder) {
-        Log.i(TAG, "Connecting via scrcpy to $remoteAddress:$scrcpyPort")
         
-        Toast.makeText(this, 
-            getString(R.string.scrcpy_connecting, remoteAddress, scrcpyPort.toString()),
-            Toast.LENGTH_SHORT).show()
-        
-        scrcpyClient = ScrcpyClient(remoteAddress, scrcpyPort)
-        
-        scrcpyClient?.onConnected = { deviceName, width, height ->
-            mainHandler.post {
-                Toast.makeText(this@MainActivity,
-                    getString(R.string.scrcpy_connected, deviceName, width, height),
-                    Toast.LENGTH_SHORT).show()
-            }
-        }
-        
-        scrcpyClient?.onDisconnected = { _ ->
-            mainHandler.post {
-                Toast.makeText(this@MainActivity,
-                    getString(R.string.scrcpy_disconnected),
-                    Toast.LENGTH_SHORT).show()
-            }
-        }
-        
-        scrcpyClient?.onError = { error ->
-            mainHandler.post {
-                Toast.makeText(this@MainActivity,
-                    getString(R.string.scrcpy_error, error),
-                    Toast.LENGTH_LONG).show()
-            }
-        }
-        
-        scrcpyClient?.connect(holder.surface)
-    }
-    
-    private val scrcpyTouchListener = View.OnTouchListener { _, event ->
-        val client = scrcpyClient ?: return@OnTouchListener true
-        
-        val maskedAction = event.action and MotionEvent.ACTION_MASK
-        val action = when (maskedAction) {
-            MotionEvent.ACTION_DOWN -> 0  // AMOTION_EVENT_ACTION_DOWN
-            MotionEvent.ACTION_UP -> 1    // AMOTION_EVENT_ACTION_UP
-            MotionEvent.ACTION_MOVE -> 2  // AMOTION_EVENT_ACTION_MOVE
-            MotionEvent.ACTION_POINTER_DOWN -> 5  // AMOTION_EVENT_ACTION_POINTER_DOWN
-            MotionEvent.ACTION_POINTER_UP -> 6    // AMOTION_EVENT_ACTION_POINTER_UP
-            else -> return@OnTouchListener true
-        }
-        
-        // Handle multi-touch
-        for (i in 0 until event.pointerCount) {
-            val pointerId = event.getPointerId(i)
-            val x = event.getX(i).toInt()
-            val y = event.getY(i).toInt()
-            
-            if (maskedAction == MotionEvent.ACTION_MOVE) {
-                client.sendTouchEvent(x, y, 2, pointerId)
-            } else if (i == event.actionIndex) {
-                client.sendTouchEvent(x, y, action, pointerId)
-            }
-        }
-        
-        true
-    }
-    
-    private fun connectToRemoteServer(holder: SurfaceHolder) {
-        Log.i(TAG, "Connecting to remote server: $remoteAddress:$remotePort")
-        
-        
-        val displayMetrics = DisplayMetrics()
-        
-        windowManager.defaultDisplay.getRealMetrics(displayMetrics)
-        
-        val dpi = displayMetrics.densityDpi
-        
-        streamingClient = StreamingClient()
-        streamingClient?.setListener(object : StreamingClient.Listener {
-            override fun onConnected(width: Int, height: Int, dpi: Int) {
-                mainHandler.post {
-                    Toast.makeText(this@MainActivity, 
-                        getString(R.string.remote_connected), 
-                        Toast.LENGTH_SHORT).show()
+        /**
+         * Stop the embedded server with escalating signals:
+         * - First call: SIGINT (Ctrl+C) - allows graceful cleanup
+         * - Second call: SIGTERM - stronger termination request
+         * - Third call: SIGKILL - forceful immediate termination
+         * Returns the signal that was sent: "SIGINT", "SIGTERM", or "SIGKILL"
+         */
+        fun stopEmbeddedServer(): String {
+            synchronized(serverLock) {
+                val process = embeddedServerProcess
+                if (process == null || !process.isAlive) {
+                    Log.i(TAG, "No embedded server running")
+                    localServerShutdownAttemptCount = 0
+                    return "NONE"
                 }
-            }
-            
-            override fun onDisconnected(reason: String?) {
-                mainHandler.post {
-                    Toast.makeText(this@MainActivity, 
-                        getString(R.string.remote_disconnected), 
-                        Toast.LENGTH_SHORT).show()
+                
+                val pid = try {
+                    // Get PID using reflection for Android
+                    val pidField = process.javaClass.getDeclaredField("pid")
+                    pidField.isAccessible = true
+                    pidField.getInt(process)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to get process PID", e)
+                    -1
                 }
-            }
-            
-            override fun onFrame(bitmap: Bitmap) {
-                currentBitmap = bitmap
-                mainHandler.post {
-                    drawBitmapToSurface(holder, bitmap)
+                
+                val signal = when (localServerShutdownAttemptCount) {
+                    0 -> {
+                        // First call: send SIGINT (2)
+                        localServerShutdownAttemptCount = 1
+                        if (pid > 0) {
+                            try {
+                                Runtime.getRuntime().exec(arrayOf("sh", "-c", "kill -INT $pid"))
+                                Log.i(TAG, "Sent SIGINT to embedded server (PID $pid)")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to send SIGINT", e)
+                            }
+                        }
+                        "SIGINT"
+                    }
+                    1 -> {
+                        // Second call: send SIGTERM (15)
+                        localServerShutdownAttemptCount = 2
+                        if (pid > 0) {
+                            try {
+                                Runtime.getRuntime().exec(arrayOf("sh", "-c", "kill -TERM $pid"))
+                                Log.i(TAG, "Sent SIGTERM to embedded server (PID $pid)")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to send SIGTERM", e)
+                            }
+                        } else {
+                            process.destroy()
+                        }
+                        "SIGTERM"
+                    }
+                    else -> {
+                        // Third+ call: send SIGKILL (9)
+                        localServerShutdownAttemptCount = 0
+                        process.destroyForcibly()
+                        try {
+                            process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+                        } catch (e: InterruptedException) {
+                            Log.w(TAG, "Interrupted while waiting for server to stop")
+                        }
+                        if (!process.isAlive) {
+                            embeddedServerProcess = null
+                        }
+                        Log.i(TAG, "Sent SIGKILL to embedded server")
+                        "SIGKILL"
+                    }
                 }
-            }
-            
-            override fun onAudioData(data: ByteArray, sampleRate: Int, channels: Int, bitsPerSample: Int) {
-                // TODO: Play audio data
-            }
-            
-            override fun onDisplayConfigChanged(width: Int, height: Int, dpi: Int) {
-                Log.i(TAG, "Display config changed: ${width}x${height}@${dpi}dpi")
-            }
-            
-            override fun onError(error: String) {
-                mainHandler.post {
-                    Toast.makeText(this@MainActivity, 
-                        getString(R.string.remote_connection_failed, error), 
-                        Toast.LENGTH_LONG).show()
+                
+                // Check if process exited after signal
+                try {
+                    if (process.waitFor(100, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        Log.i(TAG, "Embedded server terminated after $signal")
+                        embeddedServerProcess = null
+                        localServerShutdownAttemptCount = 0
+                    }
+                } catch (e: InterruptedException) {
+                    // Ignore
                 }
+                
+                return signal
             }
-        })
+        }
         
-        thread {
-            val connected = streamingClient?.connect(
-                remoteAddress, 
-                remotePort, 
-                mSurfaceView.width, 
-                mSurfaceView.height, 
-                dpi
-            ) ?: false
-            
-            if (!connected) {
-                mainHandler.post {
-                    Toast.makeText(this@MainActivity, 
-                        getString(R.string.remote_connection_failed, "Connection failed"), 
-                        Toast.LENGTH_LONG).show()
+        /**
+         * Force stop the embedded server immediately (SIGKILL).
+         * Use this when switching modes and we need the server to stop now.
+         */
+        fun forceStopEmbeddedServer() {
+            synchronized(serverLock) {
+                embeddedServerProcess?.let { process ->
+                    Log.i(TAG, "Force stopping embedded server...")
+                    process.destroyForcibly()
+                    try {
+                        process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+                    } catch (e: InterruptedException) {
+                        Log.w(TAG, "Interrupted while waiting for server to stop")
+                    }
+                    embeddedServerProcess = null
+                    localServerShutdownAttemptCount = 0
                 }
             }
         }
-    }
-    
-    private fun drawBitmapToSurface(holder: SurfaceHolder, bitmap: Bitmap) {
-        try {
-            val canvas: Canvas? = holder.lockCanvas()
-            canvas?.let {
-                it.drawBitmap(bitmap, 0f, 0f, null)
-                holder.unlockCanvasAndPost(it)
+        
+        fun isVerboseModeEnabled(context: Context): Boolean {
+            return PreferenceManager.getDefaultSharedPreferences(context)
+                .getBoolean(context.getString(R.string.settings_verbose_key), false)
+        }
+        
+        fun getConnectionMode(context: Context): String {
+            // Use saved connection mode preference
+            return PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_connection_mode_key), MODE_LOCAL_JNI)
+                ?: MODE_LOCAL_JNI
+        }
+        
+        fun isLocalMode(context: Context): Boolean {
+            val mode = getConnectionMode(context)
+            return mode == MODE_LOCAL_JNI || mode == MODE_LOCAL_SERVER
+        }
+        
+        fun isRemoteMode(context: Context): Boolean {
+            val mode = getConnectionMode(context)
+            return mode == MODE_REMOTE_LEGACY || mode == MODE_REMOTE_SCRCPY
+        }
+        
+        fun isScrcpyMode(context: Context): Boolean {
+            return getConnectionMode(context) == MODE_REMOTE_SCRCPY
+        }
+        
+        fun isEmbeddedServerMode(context: Context): Boolean {
+            return getConnectionMode(context) == MODE_LOCAL_SERVER
+        }
+        
+        fun getRemoteAddress(context: Context): String {
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_remote_streaming_address_key), 
+                          context.getString(R.string.settings_remote_streaming_address_default)) 
+                ?: context.getString(R.string.settings_remote_streaming_address_default)
+            // Parse address from address:port format
+            return if (addressPort.contains(":")) {
+                addressPort.substringBefore(":")
+            } else {
+                addressPort
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to draw frame: ${e.message}")
-        }
-    }
-    
-    private val remoteTouchListener = View.OnTouchListener { _, event ->
-        val client = streamingClient ?: return@OnTouchListener true
-        
-        val maskedAction = event.action and MotionEvent.ACTION_MASK
-        val action = when (maskedAction) {
-            MotionEvent.ACTION_DOWN -> 0
-            MotionEvent.ACTION_UP -> 1
-            MotionEvent.ACTION_MOVE -> 2
-            MotionEvent.ACTION_POINTER_DOWN -> 0
-            MotionEvent.ACTION_POINTER_UP -> 1
-            else -> return@OnTouchListener true
         }
         
-        // Handle multi-touch
-        for (i in 0 until event.pointerCount) {
-            val pointerId = event.getPointerId(i)
-            val x = event.getX(i).toInt()
-            val y = event.getY(i).toInt()
-            
-            if (maskedAction == MotionEvent.ACTION_MOVE) {
-                client.sendTouchEvent(x, y, pointerId, 2)
-            } else if (i == event.actionIndex) {
-                client.sendTouchEvent(x, y, pointerId, action)
+        fun getRemotePort(context: Context): Int {
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_remote_streaming_address_key),
+                          context.getString(R.string.settings_remote_streaming_address_default))
+                ?: context.getString(R.string.settings_remote_streaming_address_default)
+            // Parse port from address:port format
+            return try {
+                if (addressPort.contains(":")) {
+                    addressPort.substringAfter(":").toInt()
+                } else {
+                    15558  // Default port
+                }
+            } catch (e: NumberFormatException) {
+                15558
             }
         }
         
-        true
+        fun getAdbPort(context: Context): Int {
+            return getRemoteAdbPort(context)
+        }
+        
+        fun getRemoteAdbAddress(context: Context): String {
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_remote_adb_address_key),
+                          context.getString(R.string.settings_remote_adb_address_default))
+                ?: context.getString(R.string.settings_remote_adb_address_default)
+            // Parse address from address:port format
+            return if (addressPort.contains(":")) {
+                addressPort.substringBefore(":")
+            } else {
+                addressPort
+            }
+        }
+        
+        fun getRemoteAdbPort(context: Context): Int {
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_remote_adb_address_key),
+                          context.getString(R.string.settings_remote_adb_address_default))
+                ?: context.getString(R.string.settings_remote_adb_address_default)
+            // Parse port from address:port format
+            return try {
+                if (addressPort.contains(":")) {
+                    addressPort.substringAfter(":").toInt()
+                } else {
+                    15555  // Default port
+                }
+            } catch (e: NumberFormatException) {
+                15555
+            }
+        }
+        
+        fun getLocalServerAddress(context: Context): String {
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_local_server_address_key),
+                          context.getString(R.string.settings_local_server_address_default))
+                ?: context.getString(R.string.settings_local_server_address_default)
+            // Parse address from address:port format
+            return if (addressPort.contains(":")) {
+                addressPort.substringBefore(":")
+            } else {
+                "127.0.0.1"  // Default local address
+            }
+        }
+        
+        fun getLocalServerPort(context: Context): Int {
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_local_server_address_key),
+                          context.getString(R.string.settings_local_server_address_default))
+                ?: context.getString(R.string.settings_local_server_address_default)
+            // Parse port from address:port format
+            return try {
+                if (addressPort.contains(":")) {
+                    addressPort.substringAfter(":").toInt()
+                } else {
+                    15558  // Default port
+                }
+            } catch (e: NumberFormatException) {
+                15558
+            }
+        }
+        
+        fun getLocalAdbAddress(context: Context): String {
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_local_adb_address_key),
+                          context.getString(R.string.settings_local_adb_address_default))
+                ?: context.getString(R.string.settings_local_adb_address_default)
+            // Parse address from address:port format
+            return if (addressPort.isEmpty()) {
+                ""  // Disabled
+            } else if (addressPort.contains(":")) {
+                addressPort.substringBefore(":")
+            } else {
+                "127.0.0.1"  // Default local address
+            }
+        }
+        
+        fun getLocalAdbPort(context: Context): Int {
+            val addressPort = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_local_adb_address_key),
+                          context.getString(R.string.settings_local_adb_address_default))
+                ?: context.getString(R.string.settings_local_adb_address_default)
+            // Parse port from address:port format (empty = disabled)
+            return try {
+                if (addressPort.isEmpty()) {
+                    0  // Disabled
+                } else if (addressPort.contains(":")) {
+                    addressPort.substringAfter(":").toInt()
+                } else {
+                    15555  // Default port
+                }
+            } catch (e: NumberFormatException) {
+                15555
+            }
+        }
+        
+        fun getBaseDir(context: Context): String {
+            return PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(context.getString(R.string.settings_basedir_key),
+                          context.getString(R.string.settings_basedir_default))
+                ?: context.getString(R.string.settings_basedir_default)
+        }
     }
 
-    private lateinit var binding: ActivityMainBinding
+    class SettingsFragment: PreferenceFragmentCompat() {
+        override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+            setPreferencesFromResource(R.xml.preferences, rootKey)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+            // Local mode options
+            val localJniOption = preferenceScreen.findPreference<Preference>(getString(R.string.settings_local_jni_key))
+            val shutdownJniOption = preferenceScreen.findPreference<Preference>(getString(R.string.settings_shutdown_jni_key))
+            val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
+            
+            // Remote mode options (now click actions, not toggles)
+            val remoteStreamingOption = preferenceScreen.findPreference<Preference>(getString(R.string.settings_remote_streaming_key))
+            val remoteScrcpyOption = preferenceScreen.findPreference<Preference>(getString(R.string.settings_remote_scrcpy_key))
+            
+            // Local settings
+            val localServerAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_server_address_key))
+            val localAdbAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_local_adb_address_key))
+            val basedir = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_basedir_key))
+            
+            // Remote settings
+            val remoteStreamingAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_streaming_address_key))
+            val remoteAdbAddress = preferenceScreen.findPreference<EditTextPreference>(getString(R.string.settings_remote_adb_address_key))
+            
+            // Settings group
+            @Suppress("UNUSED_VARIABLE")
+            val verboseMode = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_verbose_key))
+            val viewLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_logs_key))
+            val exportLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_export_logs_key))
+            val clearLogs = preferenceScreen.findPreference<Preference>(getString(R.string.settings_clear_logs_key))
+            val about = preferenceScreen.findPreference<Preference>(getString(R.string.settings_about_key))
 
-        val windowInsetsController =
-            WindowCompat.getInsetsController(window, window.decorView)
-        windowInsetsController.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
-
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        
-        // Check connection mode from settings
-        val connectionMode = SettingsActivity.getConnectionMode(this)
-        Log.i(TAG, "Connection mode: $connectionMode")
-        
-        when (connectionMode) {
-            SettingsActivity.MODE_LOCAL_JNI -> {
-                isRemoteMode = false
-                isEmbeddedServerMode = false
-                isScrcpyMode = false
-                Log.i(TAG, "Local JNI mode")
+            // Handle local JNI option - on click, connect immediately
+            localJniOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                // Don't stop local server - leave it running for next connection
+                // User can manually shut it down via the toggle
+                
+                // Save connection mode preference
+                PreferenceManager.getDefaultSharedPreferences(requireContext())
+                    .edit()
+                    .putString(getString(R.string.settings_connection_mode_key), MODE_LOCAL_JNI)
+                    .apply()
+                
+                // Start container via JNI immediately
+                Toast.makeText(activity, getString(R.string.jni_container_starting), Toast.LENGTH_SHORT).show()
+                startActivity(Intent(activity, RendererActivity::class.java))
+                true
             }
-            SettingsActivity.MODE_LOCAL_SERVER -> {
-                isRemoteMode = false
-                isEmbeddedServerMode = true
-                isScrcpyMode = false
-                Log.i(TAG, "Local embedded server mode")
+            
+            // Handle shutdown JNI container option
+            // First click: SIGINT (Ctrl+C), second: SIGTERM, third: SIGKILL
+            shutdownJniOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                Anbox.stopRuntime()
+                val signal = Anbox.stopContainer()
+                when (signal) {
+                    "SIGINT" -> Toast.makeText(activity, getString(R.string.jni_container_stopping_sigint), Toast.LENGTH_SHORT).show()
+                    "SIGTERM" -> Toast.makeText(activity, getString(R.string.jni_container_stopping_sigterm), Toast.LENGTH_SHORT).show()
+                    "SIGKILL" -> Toast.makeText(activity, getString(R.string.jni_container_stopped_sigkill), Toast.LENGTH_SHORT).show()
+                }
+                true
             }
-            SettingsActivity.MODE_REMOTE_LEGACY -> {
-                isRemoteMode = true
-                isEmbeddedServerMode = false
-                isScrcpyMode = false
-                remoteAddress = SettingsActivity.getRemoteAddress(this)
-                remotePort = SettingsActivity.getRemotePort(this)
-                Log.i(TAG, "Remote legacy mode: $remoteAddress:$remotePort")
-            }
-            SettingsActivity.MODE_REMOTE_SCRCPY -> {
-                isRemoteMode = true
-                isEmbeddedServerMode = false
-                isScrcpyMode = true
-                remoteAddress = SettingsActivity.getRemoteAddress(this)
-                scrcpyPort = SettingsActivity.getAdbPort(this)
-                Log.i(TAG, "Remote scrcpy mode: $remoteAddress:$scrcpyPort")
-            }
-        }
-        
-        // For local mode, check if rootfs exists
-        if (!isRemoteMode && !File(filesDir, "rootfs").exists()) {
-            AlertDialog.Builder(this)
-                .apply {
-                    setTitle(getString(R.string.rom_installer_title))
-                    setMessage(getString(R.string.rom_installer_message))
-                    setPositiveButton(R.string.rom_installer_install) { _, _ ->
-                        
-                        startActivityForResult(
-                            Intent(Intent.ACTION_OPEN_DOCUMENT)
-                                .apply {
+            
+            // Handle local server toggle - starts/stops embedded server in background
+            localServerToggle?.onPreferenceChangeListener = Preference.OnPreferenceChangeListener { _, newValue ->
+                val enabled = newValue as Boolean
+                if (enabled) {
+                    val context = requireContext()
+                    val baseDir = getBaseDir(context)
+                    val rootfsDir = File(baseDir, "rootfs")
+                    
+                    // Check if rootfs exists, if not prompt to install
+                    if (!rootfsDir.exists()) {
+                        // Show rom installer dialog
+                        AlertDialog.Builder(context)
+                            .setTitle(R.string.rom_installer_title)
+                            .setMessage(R.string.rom_installer_message)
+                            .setPositiveButton(R.string.rom_installer_install) { _, _ ->
+                                // Launch file picker for rootfs
+                                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                                     addCategory(Intent.CATEGORY_OPENABLE)
-                                    setType("*/*")
+                                    type = "*/*"
                                     putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
                                         "application/gzip",
                                         "application/x-gzip",
                                         "application/x-compressed-tar"
                                     ))
-                                },
-                            READ_REQUEST_CODE
-                        )
-                    }
-                    setNegativeButton(R.string.cancel) { _, _ ->
-                        finishAffinity()
-                        exitProcess(0)
-                    }
-                    setCancelable(false)
-                    show()
-                }
-            return
-        }
-
-        if (!isRemoteMode && !isEmbeddedServerMode) {
-            Anbox.setPath(filesDir.path)
-        }
-
-        mSurfaceView = SurfaceView(this)
-        mSurfaceView.getHolder().addCallback(mSurfaceCallback)
-        binding.root.addView(mSurfaceView, 0)
-
-        // Set touch listener based on mode
-        if (isScrcpyMode) {
-            mSurfaceView.setOnTouchListener(scrcpyTouchListener)
-        } else if (isRemoteMode || isEmbeddedServerMode) {
-            mSurfaceView.setOnTouchListener(remoteTouchListener)
-        } else {
-            mSurfaceView.setOnTouchListener(Anbox)
-        }
-        
-        binding.fab.setOnClickListener {
-            startActivity(Intent(applicationContext, SettingsActivity::class.java))
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION), 1);
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        if (isRemoteMode || isEmbeddedServerMode) {
-            streamingClient?.disconnect()
-            stopEmbeddedServer()
-        } else {
-            Anbox.stopRuntime()
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == READ_REQUEST_CODE) {
-            if (resultCode != Activity.RESULT_OK || data == null) {
-                finishAffinity()
-                return
-            }
-            val uri = data.data
-            if (uri != null) {
-                
-                val progressDialog = ProgressDialog(this).apply {
-                    setTitle(getString(R.string.rom_installer_extracting_title))
-                    
-                    setMessage(getString(R.string.rom_installer_extracting_msg))
-                    
-                    setProgressStyle(ProgressDialog.STYLE_SPINNER)
-                    setCanceledOnTouchOutside(false)
-                    show()
-                }
-                thread {
-                    val inputStream = contentResolver.openInputStream(uri)
-                    if (inputStream != null) {
-                        extractTarGz(inputStream, filesDir)
-                        inputStream.close()
-                        // Create required directories after extraction
-                        ensureRequiredDirectories()
-                        progressDialog.dismiss()
-                        runOnUiThread() { recreate() }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun ensureRequiredDirectories() {
-        // Create tmp directory for proot (PROOT_TMP_DIR)
-        val tmpDir = File(filesDir, "tmp")
-        if (!tmpDir.exists()) {
-            if (!tmpDir.mkdirs()) {
-                Log.e(TAG, "Failed to create tmp directory: ${tmpDir.absolutePath}")
-                throw RuntimeException("Failed to create required tmp directory")
-            }
-            Log.i(TAG, "Created tmp directory: ${tmpDir.absolutePath}")
-        }
-        
-        // Create mnt/user/0 directory for storage binding
-        val mntUserDir = File(filesDir, "rootfs/mnt/user/0")
-        if (!mntUserDir.exists()) {
-            if (!mntUserDir.mkdirs()) {
-                Log.e(TAG, "Failed to create mnt/user/0 directory: ${mntUserDir.absolutePath}")
-                throw RuntimeException("Failed to create required mnt/user/0 directory")
-            }
-            Log.i(TAG, "Created mnt/user/0 directory: ${mntUserDir.absolutePath}")
-        }
-    }
-
-    private companion object {
-        // Unix permission bit for owner execute (octal 0100)
-        private const val OWNER_EXECUTE_PERMISSION = 0b001_000_000
-    }
-
-    private fun extractTarGz(inputStream: java.io.InputStream, destDir: File) {
-        // Extract to rootfs subdirectory since tar.gz contains /system directly
-        // (not /rootfs/system like the old 7z format)
-        val rootfsDir = File(destDir, "rootfs")
-        rootfsDir.mkdirs()
-        val rootfsCanonicalPath = rootfsDir.canonicalPath
-
-        GZIPInputStream(BufferedInputStream(inputStream)).use { gzipInputStream ->
-            TarArchiveInputStream(gzipInputStream).use { tarInputStream ->
-                var entry = tarInputStream.nextTarEntry
-                while (entry != null) {
-                    val destFile = File(rootfsDir, entry.name)
-                    
-                    // Validate path to prevent path traversal attacks
-                    if (!destFile.canonicalPath.startsWith(rootfsCanonicalPath)) {
-                        Log.w(TAG, "Skipping entry outside destination: ${entry.name}")
-                        entry = tarInputStream.nextTarEntry
-                        continue
-                    }
-                    
-                    if (entry.isDirectory) {
-                        destFile.mkdirs()
-                    } else {
-                        destFile.parentFile?.mkdirs()
-                        if (entry.isSymbolicLink) {
-                            // Handle symbolic links with validation
-                            val linkTarget = entry.linkName
-                            
-                            // Validate symlink target to prevent escape attacks
-                            // We check if the target would escape the rootfs when resolved
-                            val isAbsolute = linkTarget.startsWith("/")
-                            val wouldEscape = if (isAbsolute) {
-                                // Absolute symlinks should stay within rootfs
-                                // (they will be resolved relative to the proot environment anyway)
-                                false  // Allow absolute symlinks as proot handles them
-                            } else {
-                                // For relative symlinks, check if resolving them escapes rootfs
-                                var currentPath: File? = destFile.parentFile
-                                for (component in linkTarget.split("/")) {
-                                    when (component) {
-                                        ".." -> currentPath = currentPath?.parentFile
-                                        ".", "" -> { /* ignore */ }
-                                        else -> currentPath = currentPath?.let { File(it, component) }
-                                    }
                                 }
-                                currentPath?.let { 
-                                    !it.absolutePath.startsWith(rootfsCanonicalPath) 
-                                } ?: true
+                                startActivityForResult(intent, ROOTFS_INSTALL_REQUEST_CODE)
                             }
-                            
-                            if (wouldEscape) {
-                                Log.w(TAG, "Skipping unsafe symlink: ${destFile.path} -> $linkTarget")
+                            .setNegativeButton(R.string.cancel) { _, _ ->
+                                // Disable the toggle since rootfs is not available
+                                localServerToggle?.isChecked = false
+                            }
+                            .setCancelable(false)
+                            .show()
+                        return@OnPreferenceChangeListener false  // Don't toggle yet
+                    }
+                    
+                    // Save connection mode preference
+                    PreferenceManager.getDefaultSharedPreferences(context)
+                        .edit()
+                        .putString(getString(R.string.settings_connection_mode_key), MODE_LOCAL_SERVER)
+                        .apply()
+                    
+                    // Actually start the embedded server in background
+                    Toast.makeText(activity, getString(R.string.embedded_server_starting), Toast.LENGTH_SHORT).show()
+                    thread {
+                        val success = startEmbeddedServer(context)
+                        activity?.runOnUiThread {
+                            if (success) {
+                                val port = getLocalServerPort(context)
+                                Toast.makeText(activity, getString(R.string.embedded_server_started, port), Toast.LENGTH_SHORT).show()
                             } else {
-                                try {
-                                    // Delete existing file/symlink if it exists using Files.deleteIfExists for reliability
-                                    java.nio.file.Files.deleteIfExists(destFile.toPath())
-                                    java.nio.file.Files.createSymbolicLink(
-                                        destFile.toPath(),
-                                        java.nio.file.Paths.get(linkTarget)
-                                    )
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "Failed to create symlink: ${destFile.path} -> $linkTarget: ${e.message}")
-                                }
-                            }
-                        } else {
-                            FileOutputStream(destFile).use { fos ->
-                                tarInputStream.copyTo(fos)
-                            }
-                            // Preserve file permissions (owner execute only)
-                            val mode = entry.mode
-                            if (mode and OWNER_EXECUTE_PERMISSION != 0) {
-                                destFile.setExecutable(true, true)
+                                Toast.makeText(activity, getString(R.string.embedded_server_failed, "Failed to start"), Toast.LENGTH_LONG).show()
+                                localServerToggle?.isChecked = false
                             }
                         }
                     }
-                    entry = tarInputStream.nextTarEntry
+                } else {
+                    // Stop server with escalating signals
+                    val signal = stopEmbeddedServer()
+                    when (signal) {
+                        "SIGINT" -> Toast.makeText(activity, getString(R.string.local_server_stopping_sigint), Toast.LENGTH_SHORT).show()
+                        "SIGTERM" -> Toast.makeText(activity, getString(R.string.local_server_stopping_sigterm), Toast.LENGTH_SHORT).show()
+                        "SIGKILL" -> {
+                            Toast.makeText(activity, getString(R.string.local_server_stopped_sigkill), Toast.LENGTH_SHORT).show()
+                            localServerToggle?.isChecked = false
+                        }
+                        "NONE" -> {
+                            Toast.makeText(activity, getString(R.string.embedded_server_stopped), Toast.LENGTH_SHORT).show()
+                            localServerToggle?.isChecked = false
+                        }
+                    }
+                    // Don't change toggle state until SIGKILL - let user click again to escalate
+                    if (signal != "SIGKILL" && signal != "NONE") {
+                        return@OnPreferenceChangeListener false
+                    }
+                }
+                true
+            }
+            
+            // Handle remote streaming option - click to connect
+            remoteStreamingOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                // Don't stop local server - leave it running for next connection
+                // User can manually shut it down via the toggle
+                
+                // Save connection mode preference
+                PreferenceManager.getDefaultSharedPreferences(requireContext())
+                    .edit()
+                    .putString(getString(R.string.settings_connection_mode_key), MODE_REMOTE_LEGACY)
+                    .apply()
+                
+                // Start streaming connection
+                startActivity(Intent(activity, RendererActivity::class.java))
+                true
+            }
+            
+            // Handle remote scrcpy option - click to connect
+            remoteScrcpyOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                // Don't stop local server - leave it running for next connection
+                // User can manually shut it down via the toggle
+                
+                // Save connection mode preference
+                PreferenceManager.getDefaultSharedPreferences(requireContext())
+                    .edit()
+                    .putString(getString(R.string.settings_connection_mode_key), MODE_REMOTE_SCRCPY)
+                    .apply()
+                
+                // Start scrcpy connection
+                startActivity(Intent(activity, RendererActivity::class.java))
+                true
+            }
+
+            // View logs
+            viewLogs?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                startActivity(Intent(activity, LogViewActivity::class.java))
+                true
+            }
+
+            // Export logs
+            exportLogs?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                exportLogFiles()
+                true
+            }
+            
+            // Clear logs
+            clearLogs?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                showClearLogsConfirmation()
+                true
+            }
+            
+            // About dialog
+            about?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                showAboutDialog()
+                true
+            }
+            
+            // Update local server address summary
+            localServerAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+                if (pref.text.isNullOrEmpty()) {
+                    getString(R.string.settings_local_server_address_summary)
+                } else {
+                    pref.text
+                }
+            }
+            
+            // Update local ADB address summary
+            localAdbAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+                if (pref.text.isNullOrEmpty()) {
+                    getString(R.string.settings_local_adb_address_summary)
+                } else {
+                    pref.text
+                }
+            }
+            
+            // Update basedir summary
+            basedir?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+                if (pref.text.isNullOrEmpty()) {
+                    getString(R.string.settings_basedir_summary)
+                } else {
+                    pref.text
+                }
+            }
+            
+            // Update remote streaming address summary with current value
+            remoteStreamingAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+                if (pref.text.isNullOrEmpty()) {
+                    getString(R.string.settings_remote_streaming_address_summary)
+                } else {
+                    pref.text
+                }
+            }
+            
+            // Update remote ADB address summary with current value
+            remoteAdbAddress?.summaryProvider = Preference.SummaryProvider<EditTextPreference> { pref ->
+                if (pref.text.isNullOrEmpty()) {
+                    getString(R.string.settings_remote_adb_address_summary)
+                } else {
+                    pref.text
                 }
             }
         }
+        
+        override fun onResume() {
+            super.onResume()
+            // Update local server toggle state based on whether the server is actually running
+            val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
+            val serverRunning = isServerRunning()
+            if (localServerToggle?.isChecked != serverRunning) {
+                localServerToggle?.isChecked = serverRunning
+                Log.d(TAG, "Updated local server toggle to match actual state: $serverRunning")
+            }
+        }
+        
+        private fun showClearLogsConfirmation() {
+            val context = activity ?: return
+            AlertDialog.Builder(context)
+                .setTitle(R.string.settings_clear_logs_confirm_title)
+                .setMessage(R.string.settings_clear_logs_confirm_message)
+                .setPositiveButton(R.string.ok) { _, _ ->
+                    clearLogFiles()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+        
+        private fun clearLogFiles() {
+            val context = activity ?: return
+            val filesDir = context.filesDir
+            
+            try {
+                var cleared = false
+                
+                // Clear proot.log
+                val prootLogFile = File(filesDir, "proot.log")
+                if (prootLogFile.exists() && prootLogFile.delete()) {
+                    cleared = true
+                }
+                
+                // Clear container.log
+                val containerLogFile = File(filesDir, "container.log")
+                if (containerLogFile.exists() && containerLogFile.delete()) {
+                    cleared = true
+                }
+                
+                // Clear server.log
+                val serverLogFile = File(filesDir, "server.log")
+                if (serverLogFile.exists() && serverLogFile.delete()) {
+                    cleared = true
+                }
+                
+                // Clear system.log from rootfs
+                val systemLogFile = File(filesDir, "rootfs/data/system.log")
+                if (systemLogFile.exists() && systemLogFile.delete()) {
+                    cleared = true
+                }
+                
+                if (cleared) {
+                    Toast.makeText(context, R.string.settings_clear_logs_success, Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, R.string.settings_logs_empty, Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear logs", e)
+                Toast.makeText(context, R.string.settings_clear_logs_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+        
+        private fun showAboutDialog() {
+            val context = activity ?: return
+            
+            val versionName = try {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            } catch (e: PackageManager.NameNotFoundException) {
+                "Unknown"
+            }
+            
+            AlertDialog.Builder(context)
+                .setTitle(R.string.about_dialog_title)
+                .setMessage(getString(R.string.about_dialog_message, versionName))
+                .setPositiveButton(R.string.ok, null)
+                .show()
+        }
+
+        private fun exportLogFiles() {
+            val context = activity ?: return
+            val filesDir = context.filesDir
+            val cacheDir = context.cacheDir
+            
+            try {
+                // Create a tarball with all diagnostic logs
+                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                val tarGzFile = File(cacheDir, "ananbox_logs_$timestamp.tar.gz")
+                
+                FileOutputStream(tarGzFile).use { fos ->
+                    GZIPOutputStream(fos).use { gzos ->
+                        TarArchiveOutputStream(gzos).use { tarOs ->
+                            tarOs.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
+                            
+                            // Add proot.log
+                            addFileToTar(tarOs, File(filesDir, "proot.log"), "proot.log")
+                            
+                            // Add system.log from rootfs
+                            addFileToTar(tarOs, File(filesDir, "rootfs/data/system.log"), "system.log")
+                            
+                            // Add container output if available
+                            addFileToTar(tarOs, File(filesDir, "container.log"), "container.log")
+                            
+                            // Add embedded server log if available
+                            addFileToTar(tarOs, File(filesDir, "server.log"), "server.log")
+                            
+                            // Add logcat output
+                            val logcatContent = collectLogcat()
+                            addStringToTar(tarOs, logcatContent, "logcat.txt")
+                            
+                            // Add process list
+                            val psOutput = collectProcessList()
+                            addStringToTar(tarOs, psOutput, "processes.txt")
+                            
+                            // Add device info
+                            val deviceInfo = collectDeviceInfo()
+                            addStringToTar(tarOs, deviceInfo, "device_info.txt")
+                            
+                            // Add dmesg if available (requires root or specific permissions)
+                            val dmesgOutput = collectDmesg()
+                            if (dmesgOutput.isNotEmpty()) {
+                                addStringToTar(tarOs, dmesgOutput, "dmesg.txt")
+                            }
+                            
+                            // Add settings info
+                            val verboseEnabled = isVerboseModeEnabled(context)
+                            val connectionMode = getConnectionMode(context)
+                            val settingsInfo = StringBuilder()
+                            settingsInfo.append("Verbose mode: $verboseEnabled\n")
+                            settingsInfo.append("Connection mode: $connectionMode\n")
+                            settingsInfo.append("Remote address: ${getRemoteAddress(context)}\n")
+                            settingsInfo.append("Remote ADB port: ${getRemoteAdbPort(context)}\n")
+                            settingsInfo.append("Local server port: ${getLocalServerPort(context)}\n")
+                            settingsInfo.append("Local ADB port: ${getLocalAdbPort(context)}\n")
+                            settingsInfo.append("Base directory: ${getBaseDir(context)}\n")
+                            addStringToTar(tarOs, settingsInfo.toString(), "settings.txt")
+                            
+                            tarOs.finish()
+                        }
+                    }
+                }
+                
+                // Share the tarball
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    tarGzFile
+                )
+                
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/gzip"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, "Ananbox Diagnostic Logs - $timestamp")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(shareIntent, "Export Logs"))
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to export logs", e)
+                // Fall back to simple text sharing
+                exportLogsAsText()
+            }
+        }
+        
+        private fun addFileToTar(tarOs: TarArchiveOutputStream, file: File, entryName: String) {
+            if (file.exists() && file.isFile) {
+                try {
+                    val entry = TarArchiveEntry(file, entryName)
+                    tarOs.putArchiveEntry(entry)
+                    file.inputStream().use { fis ->
+                        fis.copyTo(tarOs)
+                    }
+                    tarOs.closeArchiveEntry()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to add file to tar: ${file.path}", e)
+                }
+            }
+        }
+        
+        private fun addStringToTar(tarOs: TarArchiveOutputStream, content: String, entryName: String) {
+            if (content.isNotEmpty()) {
+                try {
+                    val bytes = content.toByteArray(Charsets.UTF_8)
+                    val entry = TarArchiveEntry(entryName)
+                    entry.size = bytes.size.toLong()
+                    tarOs.putArchiveEntry(entry)
+                    tarOs.write(bytes)
+                    tarOs.closeArchiveEntry()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to add string to tar: $entryName", e)
+                }
+            }
+        }
+        
+        private fun collectLogcat(): String {
+            return try {
+                val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-v", "time", "*:V"))
+                val reader = BufferedReader(InputStreamReader(process.inputStream))
+                val output = StringBuilder()
+                output.append("=== Logcat Output ===\n")
+                output.append("Timestamp: ${Date()}\n\n")
+                reader.useLines { lines ->
+                    lines.forEach { line ->
+                        output.append(line).append("\n")
+                    }
+                }
+                process.waitFor()
+                output.toString()
+            } catch (e: Exception) {
+                "Failed to collect logcat: ${e.message}\n"
+            }
+        }
+        
+        private fun collectProcessList(): String {
+            val output = StringBuilder()
+            output.append("=== Process List ===\n")
+            output.append("Timestamp: ${Date()}\n\n")
+            
+            // Get all processes visible to this app
+            try {
+                val process = Runtime.getRuntime().exec(arrayOf("ps", "-A"))
+                val reader = BufferedReader(InputStreamReader(process.inputStream))
+                reader.useLines { lines ->
+                    lines.forEach { line ->
+                        output.append(line).append("\n")
+                    }
+                }
+                process.waitFor()
+            } catch (e: Exception) {
+                output.append("Failed to get process list: ${e.message}\n")
+            }
+            
+            // Also try to get processes inside the container
+            output.append("\n=== Container Processes ===\n")
+            try {
+                val context = activity ?: return output.toString()
+                val rootfsDir = File(context.filesDir, "rootfs")
+                if (rootfsDir.exists()) {
+                    // Try reading /proc inside rootfs if available
+                    val procDir = File(rootfsDir, "proc")
+                    if (procDir.exists() && procDir.isDirectory) {
+                        procDir.listFiles()?.filter { it.name.matches(Regex("\\d+")) }?.forEach { pidDir ->
+                            try {
+                                val cmdlineFile = File(pidDir, "cmdline")
+                                if (cmdlineFile.exists()) {
+                                    val cmdline = cmdlineFile.readText().replace('\u0000', ' ').trim()
+                                    if (cmdline.isNotEmpty()) {
+                                        output.append("PID ${pidDir.name}: $cmdline\n")
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                // Ignore individual process read errors
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                output.append("Failed to get container processes: ${e.message}\n")
+            }
+            
+            return output.toString()
+        }
+        
+        private fun collectDeviceInfo(): String {
+            val output = StringBuilder()
+            output.append("=== Device Information ===\n")
+            output.append("Timestamp: ${Date()}\n\n")
+            output.append("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n")
+            output.append("Android Version: ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})\n")
+            output.append("Build: ${android.os.Build.DISPLAY}\n")
+            output.append("Board: ${android.os.Build.BOARD}\n")
+            output.append("Hardware: ${android.os.Build.HARDWARE}\n")
+            output.append("CPU ABI: ${android.os.Build.SUPPORTED_ABIS.joinToString(", ")}\n")
+            
+            // Memory info
+            try {
+                val activityManager = activity?.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+                val memInfo = android.app.ActivityManager.MemoryInfo()
+                activityManager?.getMemoryInfo(memInfo)
+                output.append("\nMemory:\n")
+                output.append("  Available: ${memInfo.availMem / (1024 * 1024)} MB\n")
+                output.append("  Total: ${memInfo.totalMem / (1024 * 1024)} MB\n")
+                output.append("  Low Memory: ${memInfo.lowMemory}\n")
+            } catch (e: Exception) {
+                output.append("Failed to get memory info: ${e.message}\n")
+            }
+            
+            // Storage info
+            try {
+                val context = activity ?: return output.toString()
+                val filesDir = context.filesDir
+                output.append("\nStorage:\n")
+                output.append("  Files Dir: ${filesDir.absolutePath}\n")
+                output.append("  Free Space: ${filesDir.freeSpace / (1024 * 1024)} MB\n")
+                output.append("  Total Space: ${filesDir.totalSpace / (1024 * 1024)} MB\n")
+            } catch (e: Exception) {
+                output.append("Failed to get storage info: ${e.message}\n")
+            }
+            
+            return output.toString()
+        }
+        
+        private fun collectDmesg(): String {
+            return try {
+                val process = Runtime.getRuntime().exec(arrayOf("dmesg"))
+                val reader = BufferedReader(InputStreamReader(process.inputStream))
+                val output = StringBuilder()
+                output.append("=== Kernel Log (dmesg) ===\n")
+                output.append("Timestamp: ${Date()}\n\n")
+                reader.useLines { lines ->
+                    lines.forEach { line ->
+                        output.append(line).append("\n")
+                    }
+                }
+                process.waitFor()
+                output.toString()
+            } catch (e: Exception) {
+                // dmesg often requires root, so we silently fail
+                ""
+            }
+        }
+        
+        private fun exportLogsAsText() {
+            val context = activity ?: return
+            val filesDir = context.filesDir
+            
+            val logContent = StringBuilder()
+            logContent.append("=== Ananbox Diagnostic Report ===\n")
+            logContent.append("Generated: ${Date()}\n\n")
+            
+            // Add device info
+            logContent.append(collectDeviceInfo())
+            logContent.append("\n")
+            
+            // Add process list
+            logContent.append(collectProcessList())
+            logContent.append("\n")
+            
+            // Add proot.log
+            val prootLogFile = File(filesDir, "proot.log")
+            if (prootLogFile.exists()) {
+                logContent.append("=== proot.log ===\n")
+                try {
+                    logContent.append(prootLogFile.readText())
+                } catch (e: Exception) {
+                    logContent.append("Error reading proot.log: ${e.message}")
+                }
+                logContent.append("\n\n")
+            }
+            
+            // Add system.log
+            val systemLogFile = File(filesDir, "rootfs/data/system.log")
+            if (systemLogFile.exists()) {
+                logContent.append("=== system.log ===\n")
+                try {
+                    logContent.append(systemLogFile.readText())
+                } catch (e: Exception) {
+                    logContent.append("Error reading system.log: ${e.message}")
+                }
+                logContent.append("\n\n")
+            }
+            
+            // Add server.log
+            val serverLogFile = File(filesDir, "server.log")
+            if (serverLogFile.exists()) {
+                logContent.append("=== server.log ===\n")
+                try {
+                    logContent.append(serverLogFile.readText())
+                } catch (e: Exception) {
+                    logContent.append("Error reading server.log: ${e.message}")
+                }
+                logContent.append("\n\n")
+            }
+            
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "Ananbox Diagnostic Report")
+                putExtra(Intent.EXTRA_TEXT, logContent.toString())
+            }
+            startActivity(Intent.createChooser(shareIntent, "Export Logs"))
+        }
+        
+        @Deprecated("Deprecated in Java")
+        override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+            super.onActivityResult(requestCode, resultCode, data)
+            if (requestCode == ROOTFS_INSTALL_REQUEST_CODE) {
+                if (resultCode != Activity.RESULT_OK || data == null) {
+                    // User cancelled, disable local server toggle
+                    val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
+                    localServerToggle?.isChecked = false
+                    return
+                }
+                val uri = data.data
+                if (uri != null) {
+                    val context = requireContext()
+                    val baseDir = getBaseDir(context)
+                    
+                    val progressDialog = ProgressDialog(context).apply {
+                        setTitle(getString(R.string.rom_installer_extracting_title))
+                        setMessage(getString(R.string.rom_installer_extracting_msg))
+                        setProgressStyle(ProgressDialog.STYLE_SPINNER)
+                        setCanceledOnTouchOutside(false)
+                        show()
+                    }
+                    
+                    thread {
+                        try {
+                            val inputStream = context.contentResolver.openInputStream(uri)
+                            if (inputStream != null) {
+                                val destDir = File(baseDir)
+                                destDir.mkdirs()
+                                extractTarGz(inputStream, destDir)
+                                inputStream.close()
+                                ensureRequiredDirectories(destDir)
+                                
+                                // Now start the embedded server after extraction
+                                val success = startEmbeddedServer(context)
+                                
+                                activity?.runOnUiThread {
+                                    progressDialog.dismiss()
+                                    // Now enable the toggle and save preference
+                                    val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
+                                    localServerToggle?.isChecked = true
+                                    
+                                    PreferenceManager.getDefaultSharedPreferences(context)
+                                        .edit()
+                                        .putString(getString(R.string.settings_connection_mode_key), MODE_LOCAL_SERVER)
+                                        .apply()
+                                    
+                                    if (success) {
+                                        val port = getLocalServerPort(context)
+                                        Toast.makeText(context, getString(R.string.embedded_server_started, port), Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, getString(R.string.embedded_server_failed, "Failed to start"), Toast.LENGTH_LONG).show()
+                                        localServerToggle?.isChecked = false
+                                    }
+                                }
+                            } else {
+                                activity?.runOnUiThread {
+                                    progressDialog.dismiss()
+                                    Toast.makeText(context, getString(R.string.rootfs_open_failed), Toast.LENGTH_SHORT).show()
+                                    val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
+                                    localServerToggle?.isChecked = false
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to extract rootfs", e)
+                            activity?.runOnUiThread {
+                                progressDialog.dismiss()
+                                Toast.makeText(context, getString(R.string.rootfs_extract_failed), Toast.LENGTH_LONG).show()
+                                val localServerToggle = preferenceScreen.findPreference<SwitchPreferenceCompat>(getString(R.string.settings_local_server_key))
+                                localServerToggle?.isChecked = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        private fun ensureRequiredDirectories(baseDir: File) {
+            // Create tmp directory for proot (PROOT_TMP_DIR)
+            val tmpDir = File(baseDir, "tmp")
+            if (!tmpDir.exists()) {
+                tmpDir.mkdirs()
+                Log.i(TAG, "Created tmp directory: ${tmpDir.absolutePath}")
+            }
+            
+            // Create mnt/user/0 directory for storage binding
+            val mntUserDir = File(baseDir, "rootfs/mnt/user/0")
+            if (!mntUserDir.exists()) {
+                mntUserDir.mkdirs()
+                Log.i(TAG, "Created mnt/user/0 directory: ${mntUserDir.absolutePath}")
+            }
+        }
+        
+        private fun extractTarGz(inputStream: java.io.InputStream, destDir: File) {
+            // Extract to rootfs subdirectory since tar.gz contains /system directly
+            val rootfsDir = File(destDir, "rootfs")
+            rootfsDir.mkdirs()
+            val rootfsCanonicalPath = rootfsDir.canonicalPath
+
+            GZIPInputStream(BufferedInputStream(inputStream)).use { gzipInputStream ->
+                TarArchiveInputStream(gzipInputStream).use { tarInputStream ->
+                    var entry = tarInputStream.nextTarEntry
+                    while (entry != null) {
+                        val destFile = File(rootfsDir, entry.name)
+                        
+                        // Validate path to prevent path traversal attacks
+                        if (!destFile.canonicalPath.startsWith(rootfsCanonicalPath)) {
+                            Log.w(TAG, "Skipping entry outside destination: ${entry.name}")
+                            entry = tarInputStream.nextTarEntry
+                            continue
+                        }
+                        
+                        if (entry.isDirectory) {
+                            destFile.mkdirs()
+                        } else {
+                            destFile.parentFile?.mkdirs()
+                            if (entry.isSymbolicLink) {
+                                // Handle symbolic links with validation
+                                val linkTarget = entry.linkName
+                                
+                                // Validate symlink target to prevent escape attacks
+                                val isAbsolute = linkTarget.startsWith("/")
+                                val wouldEscape = if (isAbsolute) {
+                                    // Allow absolute symlinks: proot virtualizes the filesystem,
+                                    // so absolute symlinks inside the rootfs resolve within the
+                                    // proot environment and cannot escape to the host filesystem.
+                                    false
+                                } else {
+                                    var currentPath: File? = destFile.parentFile
+                                    for (component in linkTarget.split("/")) {
+                                        when (component) {
+                                            ".." -> currentPath = currentPath?.parentFile
+                                            ".", "" -> { /* ignore */ }
+                                            else -> currentPath = currentPath?.let { File(it, component) }
+                                        }
+                                    }
+                                    currentPath?.let { 
+                                        !it.absolutePath.startsWith(rootfsCanonicalPath) 
+                                    } ?: true
+                                }
+                                
+                                if (wouldEscape) {
+                                    Log.w(TAG, "Skipping unsafe symlink: ${destFile.path} -> $linkTarget")
+                                } else {
+                                    try {
+                                        java.nio.file.Files.deleteIfExists(destFile.toPath())
+                                        java.nio.file.Files.createSymbolicLink(
+                                            destFile.toPath(),
+                                            java.nio.file.Paths.get(linkTarget)
+                                        )
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Failed to create symlink: ${destFile.path} -> $linkTarget: ${e.message}")
+                                    }
+                                }
+                            } else {
+                                FileOutputStream(destFile).use { fos ->
+                                    tarInputStream.copyTo(fos)
+                                }
+                                // Preserve file permissions (owner execute only)
+                                val mode = entry.mode
+                                if (mode and OWNER_EXECUTE_PERMISSION != 0) {
+                                    destFile.setExecutable(true, true)
+                                }
+                            }
+                        }
+                        entry = tarInputStream.nextTarEntry
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        supportActionBar?.setDisplayHomeAsUpEnabled(false)
+        supportActionBar?.setTitle(R.string.title_settings)
+
+        supportFragmentManager
+            .beginTransaction()
+            .replace(R.id.settings, SettingsFragment())
+            .commit()
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        when(item.itemId) {
+            android.R.id.home -> {
+                finish()
+            }
+        }
+        return true
     }
 }

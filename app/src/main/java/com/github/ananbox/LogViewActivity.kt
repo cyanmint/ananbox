@@ -34,7 +34,7 @@ class LogViewActivity : AppCompatActivity() {
         val scrollView = findViewById<ScrollView>(R.id.log_scroll_view)
 
         val logContent = StringBuilder()
-        val verboseMode = SettingsActivity.isVerboseModeEnabled(this)
+        val verboseMode = MainActivity.isVerboseModeEnabled(this)
 
         // Add device info header in verbose mode
         if (verboseMode) {
@@ -204,7 +204,7 @@ class LogViewActivity : AppCompatActivity() {
 
     private fun collectLogcatExcerpt(): String {
         return try {
-            val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-v", "time", "-s", "libAnbox:*", "Anbox:*", "MainActivity:*", "SettingsActivity:*", "proot:*"))
+            val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-v", "time", "-s", "libAnbox:*", "Anbox:*", "RendererActivity:*", "MainActivity:*", "proot:*"))
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             val output = StringBuilder()
             val linesList = reader.readLines()
