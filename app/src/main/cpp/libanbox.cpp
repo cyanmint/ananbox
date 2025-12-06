@@ -421,6 +421,7 @@ static void print_server_usage(const char* program) {
               << "  -t, --tmpdir <path>     Temporary directory for proot\n"
               << "  -A, --adb-address <ip>  ADB listen address\n"
               << "  -D, --adb-port <port>   ADB listen port (default: 5555)\n"
+              << "  -S, --adb-socket <path> ADB socket path (default: /dev/socket/adbd)\n"
               << "  -v, --verbose           Enable verbose logging\n"
               << "  -?, --help              Show this help message\n"
               << std::endl;
