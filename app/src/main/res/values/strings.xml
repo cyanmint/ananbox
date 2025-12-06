@@ -51,6 +51,11 @@
     <string name="settings_shutdown_jni_title">Shutdown JNI Container</string>
     <string name="settings_shutdown_jni_summary">Click: SIGINT → SIGTERM → SIGKILL</string>
     
+    <!-- Local Server Shutdown Messages -->
+    <string name="local_server_stopping_sigint">Sending SIGINT… Toggle off again for SIGTERM</string>
+    <string name="local_server_stopping_sigterm">Sending SIGTERM… Toggle off again to force kill</string>
+    <string name="local_server_stopped_sigkill">Server killed (SIGKILL)</string>
+    
     <!-- Remote Mode Settings (not foldable) -->
     <string name="settings_remote_category">Remote Mode</string>
     <string name="settings_remote_streaming_key">remote_streaming_toggle</string>

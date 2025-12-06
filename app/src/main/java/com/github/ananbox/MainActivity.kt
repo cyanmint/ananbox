@@ -46,6 +46,10 @@ class MainActivity : AppCompatActivity() {
         @Volatile
         private var embeddedServerProcess: Process? = null
         
+        // Track local server shutdown attempt count: 0=none, 1=SIGINT sent, 2=SIGTERM sent
+        @Volatile
+        private var localServerShutdownAttemptCount = 0
+        
         // Lock for synchronizing server start/stop
         private val serverLock = Any()
         
@@ -57,6 +61,13 @@ class MainActivity : AppCompatActivity() {
         
         fun isServerRunning(): Boolean {
             return embeddedServerProcess?.isAlive == true
+        }
+        
+        /**
+         * Reset local server shutdown state (e.g., when server is started)
+         */
+        fun resetLocalServerShutdownState() {
+            localServerShutdownAttemptCount = 0
         }
         
         /**
@@ -295,18 +306,109 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        fun stopEmbeddedServer() {
+        /**
+         * Stop the embedded server with escalating signals:
+         * - First call: SIGINT (Ctrl+C) - allows graceful cleanup
+         * - Second call: SIGTERM - stronger termination request
+         * - Third call: SIGKILL - forceful immediate termination
+         * Returns the signal that was sent: "SIGINT", "SIGTERM", or "SIGKILL"
+         */
+        fun stopEmbeddedServer(): String {
+            synchronized(serverLock) {
+                val process = embeddedServerProcess
+                if (process == null || !process.isAlive) {
+                    Log.i(TAG, "No embedded server running")
+                    localServerShutdownAttemptCount = 0
+                    return "NONE"
+                }
+                
+                val pid = try {
+                    // Get PID using reflection for Android
+                    val pidField = process.javaClass.getDeclaredField("pid")
+                    pidField.isAccessible = true
+                    pidField.getInt(process)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to get process PID", e)
+                    -1
+                }
+                
+                val signal = when (localServerShutdownAttemptCount) {
+                    0 -> {
+                        // First call: send SIGINT (2)
+                        localServerShutdownAttemptCount = 1
+                        if (pid > 0) {
+                            try {
+                                Runtime.getRuntime().exec(arrayOf("sh", "-c", "kill -INT $pid"))
+                                Log.i(TAG, "Sent SIGINT to embedded server (PID $pid)")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to send SIGINT", e)
+                            }
+                        }
+                        "SIGINT"
+                    }
+                    1 -> {
+                        // Second call: send SIGTERM (15)
+                        localServerShutdownAttemptCount = 2
+                        if (pid > 0) {
+                            try {
+                                Runtime.getRuntime().exec(arrayOf("sh", "-c", "kill -TERM $pid"))
+                                Log.i(TAG, "Sent SIGTERM to embedded server (PID $pid)")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to send SIGTERM", e)
+                            }
+                        } else {
+                            process.destroy()
+                        }
+                        "SIGTERM"
+                    }
+                    else -> {
+                        // Third+ call: send SIGKILL (9)
+                        localServerShutdownAttemptCount = 0
+                        process.destroyForcibly()
+                        try {
+                            process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+                        } catch (e: InterruptedException) {
+                            Log.w(TAG, "Interrupted while waiting for server to stop")
+                        }
+                        if (!process.isAlive) {
+                            embeddedServerProcess = null
+                        }
+                        Log.i(TAG, "Sent SIGKILL to embedded server")
+                        "SIGKILL"
+                    }
+                }
+                
+                // Check if process exited after signal
+                try {
+                    if (process.waitFor(100, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        Log.i(TAG, "Embedded server terminated after $signal")
+                        embeddedServerProcess = null
+                        localServerShutdownAttemptCount = 0
+                    }
+                } catch (e: InterruptedException) {
+                    // Ignore
+                }
+                
+                return signal
+            }
+        }
+        
+        /**
+         * Force stop the embedded server immediately (SIGKILL).
+         * Use this when switching modes and we need the server to stop now.
+         */
+        fun forceStopEmbeddedServer() {
             synchronized(serverLock) {
                 embeddedServerProcess?.let { process ->
-                    Log.i(TAG, "Stopping embedded server...")
+                    Log.i(TAG, "Force stopping embedded server...")
                     process.destroyForcibly()
                     try {
-                        // Wait up to 5 seconds for process to terminate
-                        process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+                        process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
                     } catch (e: InterruptedException) {
                         Log.w(TAG, "Interrupted while waiting for server to stop")
                     }
                     embeddedServerProcess = null
+                    localServerShutdownAttemptCount = 0
                 }
             }
         }
@@ -509,9 +611,9 @@ class MainActivity : AppCompatActivity() {
 
             // Handle local JNI option - on click, connect immediately
             localJniOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
-                // If local server is running, stop it before switching modes
+                // If local server is running, force stop it before switching modes
                 if (localServerToggle?.isChecked == true) {
-                    stopEmbeddedServer()
+                    forceStopEmbeddedServer()
                 }
                 // Disable local server toggle
                 localServerToggle?.isChecked = false
@@ -598,18 +700,33 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 } else {
-                    // Stop server
-                    stopEmbeddedServer()
-                    Toast.makeText(activity, getString(R.string.embedded_server_stopped), Toast.LENGTH_SHORT).show()
+                    // Stop server with escalating signals
+                    val signal = stopEmbeddedServer()
+                    when (signal) {
+                        "SIGINT" -> Toast.makeText(activity, getString(R.string.local_server_stopping_sigint), Toast.LENGTH_SHORT).show()
+                        "SIGTERM" -> Toast.makeText(activity, getString(R.string.local_server_stopping_sigterm), Toast.LENGTH_SHORT).show()
+                        "SIGKILL" -> {
+                            Toast.makeText(activity, getString(R.string.local_server_stopped_sigkill), Toast.LENGTH_SHORT).show()
+                            localServerToggle?.isChecked = false
+                        }
+                        "NONE" -> {
+                            Toast.makeText(activity, getString(R.string.embedded_server_stopped), Toast.LENGTH_SHORT).show()
+                            localServerToggle?.isChecked = false
+                        }
+                    }
+                    // Don't change toggle state until SIGKILL - let user click again to escalate
+                    if (signal != "SIGKILL" && signal != "NONE") {
+                        return@OnPreferenceChangeListener false
+                    }
                 }
                 true
             }
             
             // Handle remote streaming option - click to connect
             remoteStreamingOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
-                // If local server is running, stop it before switching modes
+                // If local server is running, force stop it before switching modes
                 if (localServerToggle?.isChecked == true) {
-                    stopEmbeddedServer()
+                    forceStopEmbeddedServer()
                 }
                 // Disable local server toggle
                 localServerToggle?.isChecked = false
@@ -627,9 +744,9 @@ class MainActivity : AppCompatActivity() {
             
             // Handle remote scrcpy option - click to connect
             remoteScrcpyOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
-                // If local server is running, stop it before switching modes
+                // If local server is running, force stop it before switching modes
                 if (localServerToggle?.isChecked == true) {
-                    stopEmbeddedServer()
+                    forceStopEmbeddedServer()
                 }
                 // Disable local server toggle
                 localServerToggle?.isChecked = false
