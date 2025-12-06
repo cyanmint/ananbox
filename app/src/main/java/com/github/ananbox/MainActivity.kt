@@ -611,12 +611,8 @@ class MainActivity : AppCompatActivity() {
 
             // Handle local JNI option - on click, connect immediately
             localJniOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
-                // If local server is running, force stop it before switching modes
-                if (localServerToggle?.isChecked == true) {
-                    forceStopEmbeddedServer()
-                }
-                // Disable local server toggle
-                localServerToggle?.isChecked = false
+                // Don't stop local server - leave it running for next connection
+                // User can manually shut it down via the toggle
                 
                 // Save connection mode preference
                 PreferenceManager.getDefaultSharedPreferences(requireContext())
@@ -724,12 +720,8 @@ class MainActivity : AppCompatActivity() {
             
             // Handle remote streaming option - click to connect
             remoteStreamingOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
-                // If local server is running, force stop it before switching modes
-                if (localServerToggle?.isChecked == true) {
-                    forceStopEmbeddedServer()
-                }
-                // Disable local server toggle
-                localServerToggle?.isChecked = false
+                // Don't stop local server - leave it running for next connection
+                // User can manually shut it down via the toggle
                 
                 // Save connection mode preference
                 PreferenceManager.getDefaultSharedPreferences(requireContext())
@@ -744,12 +736,8 @@ class MainActivity : AppCompatActivity() {
             
             // Handle remote scrcpy option - click to connect
             remoteScrcpyOption?.onPreferenceClickListener = Preference.OnPreferenceClickListener {
-                // If local server is running, force stop it before switching modes
-                if (localServerToggle?.isChecked == true) {
-                    forceStopEmbeddedServer()
-                }
-                // Disable local server toggle
-                localServerToggle?.isChecked = false
+                // Don't stop local server - leave it running for next connection
+                // User can manually shut it down via the toggle
                 
                 // Save connection mode preference
                 PreferenceManager.getDefaultSharedPreferences(requireContext())
