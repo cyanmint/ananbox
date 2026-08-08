@@ -194,19 +194,18 @@ Java_com_github_ananbox_Anbox_initRuntime(
 }
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring proot_) {
-    char cmd[255];
+Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring cmd_) {
     if (fork() != 0) {
         return;
     }
     sigset_t signals_to_unblock;
     sigfillset(&signals_to_unblock);
     sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
-    const char *proot = env->GetStringUTFChars(proot_, 0);
-    sprintf(cmd, "sh %s/rootfs/run.sh %s %s", path, path, proot);
-    env->ReleaseStringUTFChars(proot_, proot);
-    execl("/system/bin/sh", "sh", "-c", cmd, 0);
-    __android_log_print(ANDROID_LOG_ERROR, TAG, "proot excuted failed: %s", strerror(errno));
+    const char *cmd_chars = env->GetStringUTFChars(cmd_, 0);
+    std::string cmd(cmd_chars);
+    env->ReleaseStringUTFChars(cmd_, cmd_chars);
+    execl("/system/bin/sh", "sh", "-c", cmd.c_str(), (char *)0);
+    __android_log_print(ANDROID_LOG_ERROR, TAG, "proot command excuted failed: %s", strerror(errno));
  }
 extern "C"
 JNIEXPORT void JNICALL
