@@ -206,3 +206,6 @@ target_include_directories(unwind_ptrace PUBLIC
 )
 set(UNWIND_INCLUDE_DIRS ${SAPI_LIBUNWIND_SOURCE_DIR}/include)
 target_compile_definitions(unwind_ptrace PRIVATE -DHAVE_CONFIG_H)
+# clang 16+ (NDK r26+) promotes implicit function declarations to errors; keep
+# them as warnings so this vendored libunwind 1.3.1 still builds unchanged.
+target_compile_options(unwind_ptrace PRIVATE -Wno-error=implicit-function-declaration -Wno-error=implicit-int)

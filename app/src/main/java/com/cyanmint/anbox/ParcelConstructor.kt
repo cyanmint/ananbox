@@ -1,4 +1,4 @@
-package com.github.ananbox
+package com.cyanmint.anbox
 
 import android.content.ComponentName
 import android.content.Intent
@@ -11,11 +11,11 @@ import androidx.annotation.RequiresApi
 
 object ParcelConstructor {
     final val TAG: String = "BinderTest"
-    final val PATH: String = "/data/data/com.github.ananbox/files/rootfs/"
+    final val PATH: String = "/data/data/com.cyanmint.anbox/files/rootfs/"
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun getBroadcastIntent(binderName: String) {
-        val intent: Intent = Intent("com.github.ananbox.BINDER")
+        val intent: Intent = Intent("com.cyanmint.anbox.BINDER")
         val bundle1: Bundle = Bundle()
         val binder1: Binder = Binder()
         bundle1.putBinder(binderName, binder1)
@@ -55,7 +55,7 @@ object ParcelConstructor {
 //        bundle1.putBinder(binderName, binder1)
 //        val parcel: Parcel = Parcel.obtain()
 //        val intent: Intent = Intent()
-//        intent.setComponent(ComponentName("com.github.ananbox", "com.github.ananbox.BinderReceiver"))
+//        intent.setComponent(ComponentName("com.cyanmint.anbox", "com.cyanmint.anbox.BinderReceiver"))
 //        intent.putExtras(bundle1)
 //        intent.writeToParcel(parcel, 0)
 //        Anbox.dumpParcel(parcel, PATH + binderName + "BroadcastIntent")
@@ -82,7 +82,7 @@ object ParcelConstructor {
 //        val parcel: Parcel = Parcel.obtain()
 //        Log.d(TAG, "bundle size: " + parcel2.readInt())
 //        val intent: Intent = Intent()
-//        intent.setComponent(ComponentName("com.github.ananbox", "com.github.ananbox.BinderReceiver"))
+//        intent.setComponent(ComponentName("com.cyanmint.anbox", "com.cyanmint.anbox.BinderReceiver"))
 //        intent.putExtras(bundle1)
 //        intent.writeToParcel(parcel, 0)
 //        Log.d(TAG, "intent size " + parcel.dataSize())

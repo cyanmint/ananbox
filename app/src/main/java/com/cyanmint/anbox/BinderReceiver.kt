@@ -1,4 +1,4 @@
-package com.github.ananbox
+package com.cyanmint.anbox
 
 import android.content.BroadcastReceiver
 import android.content.Context

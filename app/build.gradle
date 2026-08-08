@@ -1,14 +1,18 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
 }
 
 android {
-    namespace 'com.github.ananbox'
-    compileSdk 33
+    namespace 'com.cyanmint.anbox'
+    compileSdk 37
+    buildToolsVersion '37.0.0'
+    ndkVersion '27.3.13750724'
 
     defaultConfig {
-        applicationId "com.github.ananbox"
+        applicationId "com.cyanmint.anbox"
         minSdk 23
         //noinspection ExpiredTargetSdkVersion
         targetSdk 28
@@ -24,6 +28,10 @@ android {
         externalNativeBuild {
             cmake {
                 targets "anbox", "proot"
+                // AGP 9 no longer passes this, so the NDK defaults to the legacy
+                // toolchain file which hardcodes CMAKE_SYSTEM_VERSION=1 and breaks
+                // the talloc/proot clang target triple (aarch64-linux-android1-clang).
+                arguments "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=false"
             }
         }
     }
@@ -35,39 +43,56 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-    kotlinOptions {
-        jvmTarget = '1.8'
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     externalNativeBuild {
         cmake {
             path file('src/main/cpp/CMakeLists.txt')
-            version '3.22.1'
+            version '3.31.5'
         }
     }
     buildFeatures {
-        viewBinding true
+        compose true
         aidl true
+        buildConfig true
     }
     packagingOptions {
         jniLibs {
             useLegacyPackaging = true
         }
+        resources {
+            excludes += ['/META-INF/{AL2.0,LGPL2.1}']
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
     }
 }
 
 dependencies {
 
-    implementation 'androidx.core:core-ktx:1.9.0'
-    implementation 'androidx.appcompat:appcompat:1.5.0'
-    implementation 'com.google.android.material:material:1.8.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'com.fpliu.ndk.pkg.prefab.android.21:libpng:1.6.37'
+
+    // Jetpack Compose
+    implementation platform('androidx.compose:compose-bom:2026.06.01')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.activity:activity-compose:1.9.3'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+
+    // Miuix Compose UI
+    implementation 'top.yukonga.miuix.kmp:miuix-ui:0.9.3'
+    implementation 'top.yukonga.miuix.kmp:miuix-preference:0.9.3'
+    implementation 'top.yukonga.miuix.kmp:miuix-icons:0.9.3'
+
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
-    implementation "androidx.preference:preference-ktx:1.2.1"
-    implementation 'com.github.hzy3774:AndroidP7zip:v1.7.2'
+    implementation 'org.apache.commons:commons-compress:1.21'
 }
