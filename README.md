@@ -30,7 +30,7 @@ Android 11 and newer
 
 Build or download the app and a rootfs.7z of the corresponding architecture. Ananbox no longer imports a ROM automatically: from the main screen, pick or create a **profile**, then go to **Settings → Import ROM** to manually select a rootfs `.tar` file and the profile to extract it into. Each profile has its own rootfs and its own container settings, so you can keep multiple independent environments side by side.
 
-The screen/renderer is only created after you tap **Start** on the main screen; you're free to adjust settings beforehand. Use the **Console** button to get a plain `sh` shell running directly in the app's own data directory (no container/proot involved), and the **File Browser** button to browse the app's own internal storage (`/data/user/<userId>/com.cyanmint.anbox/files`).
+The screen/renderer is only created after you tap **Start** on the main screen; you're free to adjust settings beforehand. Use the **Console** button to get a plain `sh` shell running directly in the app's own data directory (no container/proot involved), and the **File Browser** button to browse the app's own data directory (`/data/user/<userId>/com.cyanmint.anbox`).
 
 Click the bottom-right button while the container is running to launch the Settings Activity, where you can shutdown the container gracefully.
 

@@ -135,7 +135,7 @@ class MainActivity : ComponentActivity() {
                     profiles = profiles,
                     currentProfile = currentProfile,
                     importProgress = importProgress,
-                    rootDir = filesDir,
+                    rootDir = appDataDir(this),
                     onSelectProfile = { name ->
                         ProfileManager.setCurrentProfile(this, name)
                         currentProfile = name

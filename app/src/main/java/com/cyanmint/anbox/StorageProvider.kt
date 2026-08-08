@@ -22,9 +22,10 @@ import java.util.Locale
 class StorageProvider: DocumentsProvider() {
     private val ALL_MIME_TYPES = "*/*"
 
-    // Exposes this app's own internal storage (/data/user/<userId>/com.cyanmint.anbox/files),
-    // not the rootfs' emulated storage.
-    private val BASE_DIR: File by lazy { context!!.filesDir }
+    // Exposes this app's own data directory (/data/user/<userId>/com.cyanmint.anbox),
+    // not the rootfs' emulated storage. Uses ApplicationInfo.dataDir (a String, available
+    // since API 1) rather than Context.dataDir (File, API 24+) since minSdk is 23.
+    private val BASE_DIR: File by lazy { File(context!!.applicationInfo.dataDir) }
 
 
     // The default columns to return information about a root if no specific

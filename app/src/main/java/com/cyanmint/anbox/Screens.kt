@@ -99,6 +99,16 @@ private fun mergePadding(outer: PaddingValues, inner: PaddingValues): PaddingVal
     )
 }
 
+/**
+ * This app's own data directory (`/data/user/<userId>/com.cyanmint.anbox`),
+ * i.e. [android.content.pm.ApplicationInfo.dataDir] -- not
+ * [android.content.Context.getFilesDir] (its `files/` subdirectory) and not
+ * the rootfs' emulated storage. Uses [android.content.pm.ApplicationInfo]'s
+ * `dataDir` String field (available since API 1) rather than
+ * [android.content.Context.getDataDir] (a `File`, API 24+) since minSdk is 23.
+ */
+fun appDataDir(context: android.content.Context): File = File(context.applicationInfo.dataDir)
+
 // ---------------------------------------------------------------------------
 // Container (launcher) tab
 // ---------------------------------------------------------------------------
@@ -291,8 +301,8 @@ fun ContainerScreen(
  * layout/`onSizeChanged` -> `updateSize()` pass never dereferences a null
  * renderer. See /NOTICE.md and the console-crash fix in TerminalView.kt.
  *
- * The shell's working directory is this app's own internal storage
- * ([android.content.Context.getFilesDir]), never the emulated/rootfs storage.
+ * The shell's working directory is this app's own data directory (see
+ * [appDataDir]), never the emulated/rootfs storage.
  */
 @Composable
 fun ConsoleScreen(
@@ -447,7 +457,7 @@ class ConsoleController(private val appContext: android.content.Context) : Termi
 
     fun attach(terminalView: TerminalView) {
         view = terminalView
-        val appDir = appContext.filesDir
+        val appDir = appDataDir(appContext)
         appDir.mkdirs()
 
         val newSession = TerminalSession(
@@ -630,8 +640,8 @@ private fun listDirectory(dir: File, sortField: FileSortField, descending: Boole
 }
 
 /**
- * File browser rooted at [rootDir] (this app's own internal storage, i.e.
- * its app data dir's `files/` directory). Backed by [mutableStateOf] so
+ * File browser rooted at [rootDir] (this app's own data directory, see
+ * [appDataDir]). Backed by [mutableStateOf] so
  * navigation always re-renders; shows an explicit empty state and a
  * read-error state instead of a silently blank list -- the root cause of the
  * old ListView blank-screen bug.
