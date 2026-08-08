@@ -716,7 +716,7 @@ fun FullscreenControlPage(
                             .aspectRatio(sessionAspect),
                 ),
         ) {
-            ScrcpyVideoSurface(
+            ContainerVideoSurface(
                 modifier = Modifier
                     .fillMaxSize()
                     .onGloballyPositioned { coordinates ->
@@ -730,24 +730,6 @@ fun FullscreenControlPage(
                             ),
                         )
                     },
-                session = session,
-                imeRequestToken = imeRequestToken,
-                onImeCommitText = onImeCommitText,
-                onImeDeleteSurroundingText = { beforeLength, afterLength ->
-                    submitImeDeleteSurroundingText(
-                        scrcpy = scrcpy,
-                        beforeLength = beforeLength,
-                        afterLength = afterLength,
-                    )
-                },
-                onImeKeyEvent = { event ->
-                    submitImeKeyEvent(
-                        scrcpy = scrcpy,
-                        event = event,
-                        keyInjectMode = session.keyInjectMode,
-                        forwardKeyRepeat = session.forwardKeyRepeat,
-                    )
-                },
             )
         }
 

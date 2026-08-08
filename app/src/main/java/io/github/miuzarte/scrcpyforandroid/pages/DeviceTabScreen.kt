@@ -1,6 +1,8 @@
 package io.github.miuzarte.scrcpyforandroid.pages
 
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
@@ -207,8 +209,25 @@ internal fun DeviceTabPage(
     val canShowPreviewControls by viewModel.canShowPreviewControls.collectAsState()
     val virtualButtonLayout by viewModel.virtualButtonLayout.collectAsState()
 
+    val containerViewModel: ContainerViewModel = viewModel()
+    val containerState by containerViewModel.state.collectAsState()
+    val rootfsImportTargetProfile = rememberSaveable { mutableStateOf("") }
+
     val activity = LocalActivity.current
     val context = LocalContext.current
+    val rootfsPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: android.net.Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val target = rootfsImportTargetProfile.value.ifBlank { containerState.activeProfile }
+        containerViewModel.importRootfs(
+            targetProfile = target,
+            openInput = { context.contentResolver.openInputStream(uri) },
+        ) { success ->
+            if (success) AppRuntime.snackbar(R.string.container_import_success, target)
+            else AppRuntime.snackbar(R.string.container_import_failed)
+        }
+    }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val navigator = LocalRootNavigator.current
@@ -301,6 +320,21 @@ internal fun DeviceTabPage(
 
             else -> viewModel.handleVirtualButtonAction(action)
         }
+    }
+
+    @Composable
+    fun ContainerStatusSection() {
+        ContainerSection(
+            state = containerState,
+            onSelectProfile = { containerViewModel.selectProfile(it) },
+            onAddProfile = { containerViewModel.addProfile(it) },
+            onRenameProfile = { containerViewModel.renameActiveProfile(it) },
+            onDeleteProfile = { containerViewModel.removeProfile(it) },
+            onImportRootfs = { target ->
+                rootfsImportTargetProfile.value = target
+                rootfsPicker.launch(arrayOf("application/x-tar", "application/octet-stream", "*/*"))
+            },
+        )
     }
 
     @Composable
@@ -640,6 +674,7 @@ internal fun DeviceTabPage(
             state = state,
             bottomInnerPadding = bottomInnerPadding,
         ) {
+            item { ContainerStatusSection() }
             item { StatusSection() }
             item { DeviceListSection() }
 
