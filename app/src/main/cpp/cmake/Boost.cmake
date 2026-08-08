@@ -8,9 +8,9 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/boost")
             SHOW_PROGRESS
     )
     file(ARCHIVE_EXTRACT INPUT boost-${BOOST_VER}.tar.xz
-            DESTINATION ${PROJECT_SOURCE_DIR}/external
+            DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}
             )
-    file(RENAME "boost-${BOOST_VER}" boost)
+    file(RENAME "${CMAKE_CURRENT_SOURCE_DIR}/boost-${BOOST_VER}" "${CMAKE_CURRENT_SOURCE_DIR}/boost")
 endif()
 
 set(BOOST_INCLUDE_LIBRARIES
