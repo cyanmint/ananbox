@@ -37,7 +37,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -49,6 +48,8 @@ import com.termux.terminal.KeyHandler
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
+import io.github.miuzarte.scrcpyforandroid.scaffolds.SectionSmallTitle
+import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -58,7 +59,6 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
-import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -81,9 +81,11 @@ import kotlin.concurrent.thread
  * Shared Miuix screen composables used by the tabbed [MainActivity] shell.
  *
  * The screen structure (Scaffold + large-title TopAppBar, section
- * [SmallTitle]s, grouped [Card]s of [ArrowPreference] rows, and the bottom
- * NavigationBar in [MainActivity]) is adapted from ScrcpyForAndroid by
- * Miuzarte (https://github.com/Miuzarte/ScrcpyForAndroid, Apache License 2.0);
+ * [SectionSmallTitle]s, grouped [Card]s of [ArrowPreference] rows, and the
+ * bottom NavigationBar in [MainActivity]) is adapted from ScrcpyForAndroid by
+ * Miuzarte (https://github.com/Miuzarte/ScrcpyForAndroid, Apache License 2.0),
+ * whose vendored `io.github.miuzarte.scrcpyforandroid` components
+ * ([SectionSmallTitle], `contextClick` haptic helper) are reused directly;
  * see /NOTICE.md and Settings -> About.
  */
 
@@ -152,7 +154,7 @@ fun ContainerScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(merged),
         ) {
-            SmallTitle(text = context.getString(R.string.profile_label))
+            SectionSmallTitle(text = context.getString(R.string.profile_label))
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                 ArrowPreference(
                     title = context.getString(R.string.profile_label),
@@ -181,7 +183,7 @@ fun ContainerScreen(
                 }
             }
 
-            SmallTitle(text = context.getString(R.string.settings_category_container))
+            SectionSmallTitle(text = context.getString(R.string.settings_category_container))
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                 BasicComponent(
                     title = context.getString(R.string.profile_label),
@@ -356,61 +358,61 @@ fun ConsoleScreen(
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 ConsoleExtraKeyButton("ESC", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeLiteralKey("\u001b")
                 }
                 ConsoleExtraKeyButton("/", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeLiteralKey("/")
                 }
                 ConsoleExtraKeyButton("-", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeLiteralKey("-")
                 }
                 ConsoleExtraKeyButton("HOME", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeSpecialKey(KeyEvent.KEYCODE_MOVE_HOME)
                 }
                 ConsoleExtraKeyButton("↑", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeSpecialKey(KeyEvent.KEYCODE_DPAD_UP)
                 }
                 ConsoleExtraKeyButton("END", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeSpecialKey(KeyEvent.KEYCODE_MOVE_END)
                 }
                 ConsoleExtraKeyButton("PGUP", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeSpecialKey(KeyEvent.KEYCODE_PAGE_UP)
                 }
             }
             Row(modifier = Modifier.fillMaxWidth()) {
                 ConsoleExtraKeyButton("TAB", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeSpecialKey(KeyEvent.KEYCODE_TAB)
                 }
                 ConsoleExtraKeyButton("CTRL", Modifier.weight(1f), active = ctrlLatched) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.toggleCtrlLatch()
                 }
                 ConsoleExtraKeyButton("ALT", Modifier.weight(1f), active = altLatched) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.toggleAltLatch()
                 }
                 ConsoleExtraKeyButton("←", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeSpecialKey(KeyEvent.KEYCODE_DPAD_LEFT)
                 }
                 ConsoleExtraKeyButton("↓", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeSpecialKey(KeyEvent.KEYCODE_DPAD_DOWN)
                 }
                 ConsoleExtraKeyButton("→", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeSpecialKey(KeyEvent.KEYCODE_DPAD_RIGHT)
                 }
                 ConsoleExtraKeyButton("PGDN", Modifier.weight(1f)) {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    haptic.contextClick()
                     controller.writeSpecialKey(KeyEvent.KEYCODE_PAGE_DOWN)
                 }
             }
@@ -768,7 +770,7 @@ fun FileBrowserScreen(
         onDismissRequest = { showSortMenu = false },
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            SmallTitle(text = context.getString(R.string.file_browser_sort_by))
+            SectionSmallTitle(text = context.getString(R.string.file_browser_sort_by))
             listOf(
                 FileSortField.NAME to context.getString(R.string.file_browser_sort_name),
                 FileSortField.SIZE to context.getString(R.string.file_browser_sort_size),
@@ -780,7 +782,7 @@ fun FileBrowserScreen(
                     onClick = { sortField = field },
                 )
             }
-            SmallTitle(
+            SectionSmallTitle(
                 text = context.getString(R.string.file_browser_sort_order),
                 modifier = Modifier.padding(top = 6.dp),
             )
@@ -869,7 +871,7 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(merged),
         ) {
-            SmallTitle(text = context.getString(R.string.settings_category_rom))
+            SectionSmallTitle(text = context.getString(R.string.settings_category_rom))
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                 ArrowPreference(
                     title = context.getString(R.string.settings_import_rom_title),
@@ -888,7 +890,7 @@ fun SettingsScreen(
                 )
             }
 
-            SmallTitle(
+            SectionSmallTitle(
                 text = context.getString(R.string.settings_category_container),
                 modifier = Modifier.padding(top = 6.dp),
             )
@@ -900,7 +902,7 @@ fun SettingsScreen(
                 )
             }
 
-            SmallTitle(
+            SectionSmallTitle(
                 text = context.getString(R.string.settings_category_about),
                 modifier = Modifier.padding(top = 6.dp),
             )
