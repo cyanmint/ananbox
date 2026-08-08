@@ -4,7 +4,6 @@ import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.ProgressDialog
-import android.content.BroadcastReceiver
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.IntentFilter
@@ -17,16 +16,24 @@ import android.util.DisplayMetrics
 import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import androidx.annotation.RequiresApi
+import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.github.ananbox.databinding.ActivityMainBinding
+import com.github.ananbox.ui.console.ConsoleScreen
+import com.github.ananbox.ui.stream.FullscreenControlScreen
+import com.github.ananbox.ui.stream.StreamAndroidView
+import com.github.ananbox.ui.theme.AnanboxTheme
 import com.hzy.libp7zip.P7ZipApi
 import java.io.File
-import java.lang.String
 import java.util.Locale
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
@@ -70,9 +77,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private lateinit var binding: ActivityMainBinding
     private val receiver = BinderReceiver()
     private val handlerThread = HandlerThread("BinderReceiverThread")
+
+    private var fullscreen by mutableStateOf(false)
+    private var consoleOpen by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,9 +96,6 @@ class MainActivity : AppCompatActivity() {
         windowInsetsController.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
-
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
         if (!File(filesDir, "rootfs").exists()) {
             AlertDialog.Builder(this)
@@ -120,12 +126,27 @@ class MainActivity : AppCompatActivity() {
 
         mSurfaceView = SurfaceView(this)
         mSurfaceView.getHolder().addCallback(mSurfaceCallback)
-        binding.root.addView(mSurfaceView, 0)
-
-        // put in onResume?
         mSurfaceView.setOnTouchListener(Anbox)
-        binding.fab.setOnClickListener {
-            startActivity(Intent(applicationContext, SettingsActivity::class.java))
+
+        setContent {
+            AnanboxTheme {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    FullscreenControlScreen(
+                        fullscreen = fullscreen,
+                        onFullscreenToggle = { fullscreen = !fullscreen },
+                        onOpenSettings = {
+                            startActivity(Intent(applicationContext, SettingsActivity::class.java))
+                        },
+                        onOpenConsole = { consoleOpen = true },
+                    ) {
+                        StreamAndroidView(viewProvider = { mSurfaceView })
+                    }
+
+                    if (consoleOpen) {
+                        ConsoleScreen(modifier = Modifier.fillMaxSize())
+                    }
+                }
+            }
         }
     }
 

@@ -48,3 +48,13 @@ Host-side Paths:
 
 ![demo](https://github.com/Ananbox/ananbox/assets/6512977/2c63d517-5bf2-48bb-ac71-42aa809cffed)
 
+## Credits
+
+- The in-app UI (Jetpack Compose + [MIUIX](https://github.com/miuix-kotlin-multiplatform/miuix) toolbar,
+  on-screen buttons, fullscreen control chrome, and embedded terminal Console) is adapted from
+  [ScrcpyForAndroid](https://github.com/Miuzarte/ScrcpyForAndroid) by
+  [Miuzarte](https://github.com/Miuzarte), licensed under the
+  [Apache License 2.0](https://github.com/Miuzarte/ScrcpyForAndroid/blob/main/LICENSE).
+- The Console's terminal emulation engine (`com.termux.terminal`, `com.termux.view`) is vendored
+  from the same project, itself derived from [Termux](https://github.com/termux).
+
