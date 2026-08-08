@@ -1,3 +1,6 @@
+// Adapted from https://github.com/Miuzarte/ScrcpyForAndroid (Apache License 2.0),
+// which credits https://github.com/reapercanuk39/termux-kotlin-app for this file.
+// See /NOTICE.md and /LICENSE-APACHE-2.0.txt.
 package com.termux.view.textselection
 
 import android.annotation.SuppressLint
@@ -12,7 +15,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.PopupWindow
 
-import com.github.ananbox.R
+import com.cyanmint.anbox.R
 import com.termux.view.TerminalView
 import com.termux.view.support.PopupWindowCompatGingerbread
 

@@ -28,21 +28,23 @@ Android 11 and newer
 
 ## How to use
 
-Build or Download the app and the rootfs.7z of corresponding architecture. The app provides the option to import the ROM the first time you boot. 
+Build or download the app and a rootfs.7z of the corresponding architecture. Ananbox no longer imports a ROM automatically: from the main screen, pick or create a **profile**, then go to **Settings → Import ROM** to manually select a rootfs `.tar` file and the profile to extract it into. Each profile has its own rootfs and its own container settings, so you can keep multiple independent environments side by side.
 
-Click the bottom-right button to launch the Settings Activity, where you can shutdown the container gracefully.
+The screen/renderer is only created after you tap **Start** on the main screen; you're free to adjust settings beforehand. Use the **Console** button to get a plain `sh` shell running directly in the app's own data directory (no container/proot involved), and the **File Browser** button to browse the app's own data directory (`/data/user/<userId>/com.cyanmint.anbox`).
+
+Click the bottom-right button while the container is running to launch the Settings Activity, where you can shutdown the container gracefully.
 
 ## Debug
 
 **Make sure you submit these files in Github issue**
 
-Host-side Paths:
+Host-side Paths (replace `<profile>` with your profile name, `default` unless renamed):
 
-- `/data/data/com.github.ananbox/files/rootfs/data/system.log`
-- `/data/data/com.github.ananbox/files/proot.log`
-- `/data/data/com.github.ananbox/files/rootfs/localBroadcastIntent`
-- `/data/data/com.github.ananbox/files/rootfs/binderBroadcastIntent`
-- `/data/data/com.github.ananbox/files/rootfs/trans_code`
+- `/data/data/com.cyanmint.anbox/files/profiles/<profile>/rootfs/data/system.log`
+- `/data/data/com.cyanmint.anbox/files/profiles/<profile>/proot.log`
+- `/data/data/com.cyanmint.anbox/files/profiles/<profile>/rootfs/localBroadcastIntent`
+- `/data/data/com.cyanmint.anbox/files/profiles/<profile>/rootfs/binderBroadcastIntent`
+- `/data/data/com.cyanmint.anbox/files/profiles/<profile>/rootfs/trans_code`
 
 ## Preview
 
@@ -50,11 +52,7 @@ Host-side Paths:
 
 ## Credits
 
-- The in-app UI (Jetpack Compose + [MIUIX](https://github.com/miuix-kotlin-multiplatform/miuix) toolbar,
-  on-screen buttons, fullscreen control chrome, and embedded terminal Console) is adapted from
-  [ScrcpyForAndroid](https://github.com/Miuzarte/ScrcpyForAndroid) by
-  [Miuzarte](https://github.com/Miuzarte), licensed under the
-  [Apache License 2.0](https://github.com/Miuzarte/ScrcpyForAndroid/blob/main/LICENSE).
-- The Console's terminal emulation engine (`com.termux.terminal`, `com.termux.view`) is vendored
-  from the same project, itself derived from [Termux](https://github.com/termux).
+The Console screen's terminal emulator/view (`com.termux.terminal`, `com.termux.view`) is copied, with light adaptation, from [Miuzarte/ScrcpyForAndroid](https://github.com/Miuzarte/ScrcpyForAndroid) (Apache License 2.0), which in turn credits [reapercanuk39/termux-kotlin-app](https://github.com/reapercanuk39/termux-kotlin-app) for this portion. See `NOTICE.md` and `LICENSE-APACHE-2.0.txt`.
+
+This fork is published under the package name `com.cyanmint.anbox` to avoid collisions with the upstream `com.github.ananbox` project, so both can be installed side by side.
 

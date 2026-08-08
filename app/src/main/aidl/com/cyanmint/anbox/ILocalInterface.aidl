@@ -1,5 +1,5 @@
 // ILocalInterface.aidl
-package com.github.ananbox;
+package com.cyanmint.anbox;
 import android.os.IBinder;
 
 // Declare any non-default types here with import statements

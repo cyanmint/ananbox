@@ -13,4 +13,4 @@
 .externalNativeBuild
 .cxx
 local.properties
-/.kotlin
+app/src/main/cpp/external/
