@@ -225,6 +225,10 @@ class TerminalView(context: Context, attributes: AttributeSet?) : View(context, 
         mScroller = Scroller(context)
         val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
         mAccessibilityEnabled = am.isEnabled
+
+        // A renderer must be available before the first layout pass calls updateSize(),
+        // otherwise mRenderer!! throws a NullPointerException and crashes the console.
+        mRenderer = TerminalRenderer(DEFAULT_TEXT_SIZE, Typeface.MONOSPACE)
     }
 
     /**
@@ -1221,5 +1225,8 @@ class TerminalView(context: Context, attributes: AttributeSet?) : View(context, 
         const val KEY_EVENT_SOURCE_SOFT_KEYBOARD = 0
 
         private const val LOG_TAG = "TerminalView"
+
+        /** Default text size (in density-independent pixels) used until [setTextSize] is called. */
+        private const val DEFAULT_TEXT_SIZE = 14
     }
 }
