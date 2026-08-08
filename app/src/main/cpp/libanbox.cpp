@@ -2,6 +2,11 @@
 #include <string>
 #include <cstdint>
 #include <unistd.h>
+#include <sstream>
+#include <vector>
+#include <iterator>
+#include <cerrno>
+#include <cstring>
 #include <android/input.h>
 #include "anbox/graphics/emugl/Renderer.h"
 #include "anbox/graphics/emugl/RenderApi.h"
@@ -204,7 +209,22 @@ Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     const char *cmd_chars = env->GetStringUTFChars(cmd_, 0);
     std::string cmd(cmd_chars);
     env->ReleaseStringUTFChars(cmd_, cmd_chars);
-    execl("/system/bin/sh", "sh", "-c", cmd.c_str(), (char *)0);
+
+    std::istringstream cmd_stream(cmd);
+    std::vector<std::string> args_storage{
+            std::istream_iterator<std::string>{cmd_stream},
+            std::istream_iterator<std::string>{}};
+    if (args_storage.empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "proot command is empty");
+        return;
+    }
+    std::vector<char *> args;
+    args.reserve(args_storage.size() + 1);
+    for (auto &arg : args_storage) {
+        args.push_back(const_cast<char *>(arg.c_str()));
+    }
+    args.push_back(nullptr);
+    execv(args_storage[0].c_str(), args.data());
     __android_log_print(ANDROID_LOG_ERROR, TAG, "proot command excuted failed: %s", strerror(errno));
  }
 extern "C"
