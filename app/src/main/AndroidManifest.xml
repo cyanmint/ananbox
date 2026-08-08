@@ -23,6 +23,18 @@
             android:label="@string/title_activity_settings"
             android:theme="@style/Theme.AppCompat.Light" />
 
+        <activity
+            android:name=".ConsoleActivity"
+            android:exported="false"
+            android:label="@string/title_activity_console"
+            android:theme="@style/Theme.AppCompat.Light" />
+
+        <activity
+            android:name=".FileBrowserActivity"
+            android:exported="false"
+            android:label="@string/title_activity_file_browser"
+            android:theme="@style/Theme.AppCompat.Light" />
+
 <!--        <receiver-->
 <!--            android:name=".BinderReceiver"-->
 <!--            android:enabled="true"-->
@@ -30,7 +42,7 @@
 
         <provider
             android:name=".StorageProvider"
-            android:authorities="com.github.ananbox.documents"
+            android:authorities="com.cyanmint.anbox.documents"
             android:exported="true"
             android:grantUriPermissions="true"
             android:permission="android.permission.MANAGE_DOCUMENTS">

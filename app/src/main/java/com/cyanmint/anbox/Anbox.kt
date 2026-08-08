@@ -1,4 +1,4 @@
-package com.github.ananbox
+package com.cyanmint.anbox
 
 import android.os.Build
 import android.os.Parcel

@@ -1,6 +1,6 @@
-package com.github.ananbox
+package com.cyanmint.anbox
 
-import com.github.ananbox.R
+import com.cyanmint.anbox.R
 import android.content.res.AssetFileDescriptor
 import android.database.Cursor
 import android.database.MatrixCursor
@@ -22,7 +22,9 @@ import java.util.Locale
 class StorageProvider: DocumentsProvider() {
     private val ALL_MIME_TYPES = "*/*"
 
-    private val BASE_DIR: File = File("/data/data/com.github.ananbox/files/rootfs/storage/emulated/0")
+    // Exposes this app's own internal storage (/data/user/<userId>/com.cyanmint.anbox/files),
+    // not the rootfs' emulated storage.
+    private val BASE_DIR: File by lazy { context!!.filesDir }
 
 
     // The default columns to return information about a root if no specific

@@ -1,9 +1,23 @@
 <PreferenceScreen
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <Preference
-        app:key="@string/settings_shutdown_key"
-        app:title="@string/settings_shutdown_title"
-        app:summary="@string/settings_shutdown_summary"/>
+    <PreferenceCategory app:title="@string/settings_category_rom">
+        <Preference
+            app:key="@string/settings_import_rom_key"
+            app:title="@string/settings_import_rom_title"
+            app:summary="@string/settings_import_rom_summary"/>
+
+        <Preference
+            app:key="@string/settings_proot_command_key"
+            app:title="@string/settings_proot_command_title"
+            app:summary="@string/settings_proot_command_summary"/>
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/settings_category_container">
+        <Preference
+            app:key="@string/settings_shutdown_key"
+            app:title="@string/settings_shutdown_title"
+            app:summary="@string/settings_shutdown_summary"/>
+    </PreferenceCategory>
 
 </PreferenceScreen>

@@ -85,7 +85,7 @@ void logger_write(const emugl::LogLevel &level, const char *format, ...) {
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_github_ananbox_Anbox_stringFromJNI(
+Java_com_cyanmint_anbox_Anbox_stringFromJNI(
         JNIEnv* env,
         jobject /* this */) {
     std::string hello = "Hello from C++";
@@ -94,7 +94,7 @@ Java_com_github_ananbox_Anbox_stringFromJNI(
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_startRuntime(
+Java_com_cyanmint_anbox_Anbox_startRuntime(
         JNIEnv *env,
         jobject thiz) {
     rt->start();
@@ -102,7 +102,7 @@ Java_com_github_ananbox_Anbox_startRuntime(
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_stopRuntime(JNIEnv *env, jobject thiz) {
+Java_com_cyanmint_anbox_Anbox_stopRuntime(JNIEnv *env, jobject thiz) {
     if (rt != nullptr) {
         rt->stop();
         rt = nullptr;
@@ -110,7 +110,7 @@ Java_com_github_ananbox_Anbox_stopRuntime(JNIEnv *env, jobject thiz) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_github_ananbox_Anbox_initRuntime(
+Java_com_cyanmint_anbox_Anbox_initRuntime(
         JNIEnv* env,
         jobject thiz,
         jint width,
@@ -199,7 +199,7 @@ Java_com_github_ananbox_Anbox_initRuntime(
 }
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring cmd_) {
+Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring cmd_) {
     if (fork() != 0) {
         return;
     }
@@ -229,7 +229,7 @@ Java_com_github_ananbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
  }
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_resetWindow(JNIEnv *env, jobject thiz, jint height, jint width) {
+Java_com_cyanmint_anbox_Anbox_resetWindow(JNIEnv *env, jobject thiz, jint height, jint width) {
     // TODO: check why change frame size cause nothing to be displayed
 //    frame->resize(width, height);
     anbox::graphics::emugl::DisplayInfo::get()->set_resolution(height, width);
@@ -252,7 +252,7 @@ void push_slot(std::vector<anbox::input::Event> &touch_events, int slot){
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_pushFingerUp(JNIEnv *env, jobject thiz, jint finger_id) {
+Java_com_cyanmint_anbox_Anbox_pushFingerUp(JNIEnv *env, jobject thiz, jint finger_id) {
     std::vector<anbox::input::Event> touch_events;
     int slot = find_touch_slot(finger_id);
     if (slot == -1)
@@ -266,7 +266,7 @@ Java_com_github_ananbox_Anbox_pushFingerUp(JNIEnv *env, jobject thiz, jint finge
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_pushFingerDown(JNIEnv *env, jobject thiz, jint x, jint y, jint finger_id) {
+Java_com_cyanmint_anbox_Anbox_pushFingerDown(JNIEnv *env, jobject thiz, jint x, jint y, jint finger_id) {
     std::vector<anbox::input::Event> touch_events;
     int slot = find_touch_slot(-1);
     if (slot == -1) {
@@ -284,7 +284,7 @@ Java_com_github_ananbox_Anbox_pushFingerDown(JNIEnv *env, jobject thiz, jint x, 
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_pushFingerMotion(JNIEnv *env, jobject thiz, jint x, jint y,
+Java_com_cyanmint_anbox_Anbox_pushFingerMotion(JNIEnv *env, jobject thiz, jint x, jint y,
                                                jint finger_id) {
     std::vector<anbox::input::Event> touch_events;
     int slot = find_touch_slot(finger_id);
@@ -299,13 +299,13 @@ Java_com_github_ananbox_Anbox_pushFingerMotion(JNIEnv *env, jobject thiz, jint x
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_destroyWindow(JNIEnv *env, jobject thiz) {
+Java_com_cyanmint_anbox_Anbox_destroyWindow(JNIEnv *env, jobject thiz) {
 //    getRenderer()->destroyAllNativeWindow();
 }
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_createSurface(JNIEnv *env, jobject thiz, jobject surface) {
+Java_com_cyanmint_anbox_Anbox_createSurface(JNIEnv *env, jobject thiz, jobject surface) {
     native_window = ANativeWindow_fromSurface(env, surface);
     renderer_->createNativeWindow(native_window);
     auto composer_ = std::make_shared<anbox::graphics::LayerComposer>(renderer_, frame, native_window);
@@ -314,7 +314,7 @@ Java_com_github_ananbox_Anbox_createSurface(JNIEnv *env, jobject thiz, jobject s
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_destroySurface(JNIEnv *env, jobject thiz) {
+Java_com_cyanmint_anbox_Anbox_destroySurface(JNIEnv *env, jobject thiz) {
     unRegisterLayerComposer();
     renderer_->destroyNativeWindow(native_window);
     ANativeWindow_release(native_window);
@@ -323,7 +323,7 @@ Java_com_github_ananbox_Anbox_destroySurface(JNIEnv *env, jobject thiz) {
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_setPath(JNIEnv *env, jobject thiz, jstring path_) {
+Java_com_cyanmint_anbox_Anbox_setPath(JNIEnv *env, jobject thiz, jstring path_) {
     const char *pathStr = env->GetStringUTFChars(path_, 0);
     memcpy(path, pathStr, strlen(pathStr) + 1);
     env->ReleaseStringUTFChars(path_, pathStr);
@@ -345,7 +345,7 @@ static inline jfieldID GetFieldIDOrDie(JNIEnv* env, jclass clazz, const char* fi
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_github_ananbox_Anbox_dumpParcel(JNIEnv *env, jobject thiz, jobject jparcel, jstring jpath) {
+Java_com_cyanmint_anbox_Anbox_dumpParcel(JNIEnv *env, jobject thiz, jobject jparcel, jstring jpath) {
     const char* const kParcelPathName = "android/os/Parcel";
     jclass parcel_clazz = FindClassOrDie(env, kParcelPathName);
     jfieldID  parcel_mNativePtr = GetFieldIDOrDie(env, parcel_clazz, "mNativePtr", "J");

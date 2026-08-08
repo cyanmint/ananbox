@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.github.ananbox'
+    namespace 'com.cyanmint.anbox'
     compileSdk 33
 
     defaultConfig {
-        applicationId "com.github.ananbox"
+        applicationId "com.cyanmint.anbox"
         minSdk 23
         //noinspection ExpiredTargetSdkVersion
         targetSdk 28

@@ -2,16 +2,48 @@
     <string name="app_name">Ananbox</string>
     <string name="title_settings">Settings</string>
     <string name="title_activity_settings">SettingsActivity</string>
+    <string name="title_activity_console">Console</string>
+    <string name="title_activity_file_browser">File Browser</string>
+
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+
+    <string name="action_start">Start</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_console">Console</string>
+    <string name="action_file_browser">File Browser</string>
+
+    <string name="profile_label">Profile</string>
+    <string name="profile_add">Add profile</string>
+    <string name="profile_remove">Remove profile</string>
+    <string name="profile_remove_confirm">Remove profile \"%1$s\" and delete its rootfs? This cannot be undone.</string>
+    <string name="profile_rootfs_ready">Profile \"%1$s\" is ready to start.</string>
+    <string name="profile_rootfs_missing">Profile \"%1$s\" has no rootfs yet. Import a ROM from Settings.</string>
+
+    <string name="settings_category_rom">ROM / Container</string>
+    <string name="settings_category_container">Runtime</string>
+
     <string name="settings_shutdown_key">shutdown</string>
     <string name="settings_shutdown_title">Shutdown</string>
     <string name="settings_shutdown_summary">Shutdown Ananbox immediately</string>
-    <string name="rom_installer_title">Install rom</string>
+
+    <string name="settings_import_rom_key">import_rom</string>
+    <string name="settings_import_rom_title">Import ROM</string>
+    <string name="settings_import_rom_summary">Manually select a rootfs (.tar) file and choose which profile to extract it into</string>
+
+    <string name="settings_proot_command_key">proot_command</string>
+    <string name="settings_proot_command_title">Container command</string>
+    <string name="settings_proot_command_summary">Edit the proot command used to start the current profile\'s container</string>
+
+    <string name="rom_installer_title">Import ROM</string>
     <string name="rom_installer_message">Please select a rootfs file (.tar) on your phone</string>
     <string name="rom_installer_install">Select a file</string>
+    <string name="rom_installer_destination_title">Select destination profile</string>
     <string name="rom_installer_extracting_title">Extracting</string>
     <string name="rom_installer_extracting_msg">Extracting rootfs file..</string>
-    <string name="cancel">Cancel</string>
+    <string name="rom_missing_go_to_settings">This profile has no rootfs installed yet. Go to Settings to manually import a ROM file.</string>
+
     <string name="proot_command_title">Container command</string>
-    <string name="proot_command_message">Enter the proot command used to start the container</string>
+    <string name="proot_command_message">Proot command used to start profile \"%1$s\"</string>
     <string name="proot_command_start">Start</string>
 </resources>
