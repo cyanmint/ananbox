@@ -24,3 +24,32 @@ screen structure/layout is adapted from:
 - https://github.com/Miuzarte/ScrcpyForAndroid (Apache License 2.0)
 
 This attribution is also shown in-app under Settings → About.
+
+## Vendored ScrcpyForAndroid package
+
+The files under `app/src/main/java/io/github/miuzarte/scrcpyforandroid` are
+vendored as-is (with only mechanical `R`/`BuildConfig` import redirection to
+this app's own generated classes, matching the pattern used for the Termux
+files above) from:
+
+- https://github.com/Miuzarte/ScrcpyForAndroid (Apache License 2.0)
+
+Their associated string resources (`app/src/main/res/values/strings.xml` and
+`app/src/main/res/values-zh/strings.xml`) are likewise copied verbatim from
+the same project (only the duplicate `app_name` entry was dropped, and
+`about_title` was renamed to `sfa_about_title` to avoid colliding with this
+app's own string of the same name).
+
+These files remain licensed under the Apache License, Version 2.0. See
+`LICENSE-APACHE-2.0.txt` for the full license text.
+
+Two small local compatibility shims were added by this project (not part of
+the upstream vendor) to satisfy dependencies unavailable in this build
+environment:
+
+- `app/src/main/java/com/github/promeg/pinyinhelper/Pinyin.kt` — a drop-in
+  replacement for the `tinypinyin` library, implemented with Android's
+  built-in ICU transliteration.
+- `app/src/main/java/io/github/miuzarte/scrcpyforandroid/scaffolds/BreadcrumbBarCompat.kt`
+  — a stand-in for Miuix's `BreadcrumbBar`/`BreadcrumbItem`, which are not yet
+  part of the published `miuix-ui` release used by this project.
