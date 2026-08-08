@@ -10,8 +10,6 @@ import com.termux.terminal.KeyHandler
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TextStyle
 import com.cyanmint.anbox.R
-import io.github.miuzarte.scrcpyforandroid.nativecore.AdbSocketStream
-import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import io.github.miuzarte.scrcpyforandroid.services.LocalInputService
 import io.github.miuzarte.scrcpyforandroid.storage.BundleSyncDelegate
@@ -63,7 +61,7 @@ internal class TerminalViewModel: ViewModel() {
     private val _shellConnecting = MutableStateFlow(false)
     val shellConnecting: StateFlow<Boolean> = _shellConnecting.asStateFlow()
 
-    private var shellStream: AdbSocketStream? = null
+    private var shellProcess: Process? = null
     private var shellWriterJob: Job? = null
     private var shellWriteChannel = Channel<ByteArray>(Channel.UNLIMITED)
 
@@ -73,8 +71,8 @@ internal class TerminalViewModel: ViewModel() {
         shellWriteChannel = Channel(Channel.UNLIMITED)
         shellWriterJob = viewModelScope.launch(Dispatchers.IO) {
             for (payload in shellWriteChannel) {
-                val stream = shellStream ?: break
-                if (stream.closed) break
+                val stream = shellProcess ?: break
+                if (!stream.isAlive) break
                 val result = runCatching {
                     stream.outputStream.write(payload)
                     stream.outputStream.flush()
@@ -172,17 +170,27 @@ internal class TerminalViewModel: ViewModel() {
         colors[TextStyle.COLOR_INDEX_CURSOR] = cursorArgb
     }
 
+    /**
+     * Launches a plain "sh" shell (no adb involved) with its working directory
+     * set to this app's own internal storage, i.e.
+     * /data/user/&lt;userId&gt;/com.cyanmint.anbox/files.
+     */
     fun openShellSession(showKeyboardAfterConnect: Boolean, requestFocus: () -> Unit) {
-        if (shellStream != null || _shellConnecting.value) {
+        if (shellProcess != null || _shellConnecting.value) {
             if (_shellReady.value && showKeyboardAfterConnect) requestFocus()
             return
         }
         _shellConnecting.value = true
         viewModelScope.launch(Dispatchers.IO) {
-            val streamResult = runCatching {
-                NativeAdbService.openShellStream("")
+            val appDir = AppRuntime.context.filesDir
+            val processResult = runCatching {
+                appDir.mkdirs()
+                ProcessBuilder("/system/bin/sh", "-i")
+                    .directory(appDir)
+                    .redirectErrorStream(true)
+                    .start()
             }
-            val stream = streamResult.getOrElse { error ->
+            val process = processResult.getOrElse { error ->
                 withContext(Dispatchers.Main) {
                     _shellConnecting.value = false
                     _shellReady.value = false
@@ -195,7 +203,7 @@ internal class TerminalViewModel: ViewModel() {
             }
 
             withContext(Dispatchers.Main) {
-                shellStream = stream
+                shellProcess = process
                 _shellReady.value = true
                 _shellConnecting.value = false
                 startShellWriter()
@@ -204,8 +212,8 @@ internal class TerminalViewModel: ViewModel() {
 
             val buffer = ByteArray(4096)
             try {
-                while (!stream.closed) {
-                    val count = stream.inputStream.read(buffer)
+                while (process.isAlive) {
+                    val count = process.inputStream.read(buffer)
                     if (count <= 0) break
                     withContext(Dispatchers.Main) {
                         sessionHolder[0]?.append(buffer, count)
@@ -219,11 +227,11 @@ internal class TerminalViewModel: ViewModel() {
                     )
                 }
             } finally {
-                runCatching { stream.close() }
+                runCatching { process.destroy() }
                 withContext(Dispatchers.Main) {
                     shellWriterJob?.cancel()
                     shellWriterJob = null
-                    if (shellStream === stream) shellStream = null
+                    if (shellProcess === process) shellProcess = null
                     _shellReady.value = false
                     _shellConnecting.value = false
                 }
@@ -233,19 +241,14 @@ internal class TerminalViewModel: ViewModel() {
 
     fun autoConnectIfNeeded(onFocus: () -> Unit) {
         if (_shellReady.value || _shellConnecting.value) return
-        viewModelScope.launch {
-            val connected = runCatching {
-                withContext(Dispatchers.IO) { NativeAdbService.isConnected() }
-            }.getOrDefault(false)
-            if (connected) openShellSession(false, onFocus)
-        }
+        openShellSession(false, onFocus)
     }
 
     fun closeShell() {
         shellWriterJob?.cancel()
         shellWriterJob = null
-        runCatching { shellStream?.close() }
-        shellStream = null
+        runCatching { shellProcess?.destroy() }
+        shellProcess = null
         _shellReady.value = false
         _shellConnecting.value = false
     }

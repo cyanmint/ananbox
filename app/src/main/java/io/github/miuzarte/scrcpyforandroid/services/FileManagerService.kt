@@ -7,8 +7,6 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import com.cyanmint.anbox.R
-import io.github.miuzarte.scrcpyforandroid.nativecore.AdbSocketStream
-import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -92,7 +90,7 @@ object FileManagerService {
 
     suspend fun listDirectory(path: String): List<RemoteFileEntry> = withContext(Dispatchers.IO) {
         val command = "ls -aFil ${quoteShellArg(pathForListCommand(path))}"
-        val output = NativeAdbService.shell(command)
+        val output = LocalContainerShell.shell(command)
         output.lineSequence()
             .map(String::trimEnd)
             .filter { it.isNotBlank() }
@@ -107,7 +105,7 @@ object FileManagerService {
     }
 
     suspend fun stat(path: String): RemoteFileStat = withContext(Dispatchers.IO) {
-        val output = NativeAdbService.shell("stat ${quoteShellArg(path)}")
+        val output = LocalContainerShell.shell("stat ${quoteShellArg(localPath(path))}")
         parseStat(path, output)
     }
 
@@ -116,13 +114,13 @@ object FileManagerService {
         uri: Uri,
         remoteDirectory: String,
     ): String = withContext(Dispatchers.IO) {
-        NativeAdbService.ensureConnectionResponsive()
+        LocalContainerShell.ensureConnectionResponsive()
         val fileName = queryDisplayName(context.contentResolver, uri)
             ?: throw IOException(AppRuntime.stringResource(R.string.fm_exception_cannot_read_filename))
         val remotePath = joinRemotePath(remoteDirectory, fileName)
         context.contentResolver.openInputStream(uri).use { input ->
             requireNotNull(input) { AppRuntime.stringResource(R.string.fm_exception_cannot_read_selected_file) }
-            NativeAdbService.push(input, remotePath)
+            LocalContainerShell.push(input, remotePath)
         }
         return@withContext remotePath
     }
@@ -134,8 +132,8 @@ object FileManagerService {
         val sanitizedName = directoryName.trim().trim('/').takeIf { it.isNotBlank() }
             ?: throw IOException(AppRuntime.stringResource(R.string.fm_exception_folder_name_empty))
         val remotePath = joinRemotePath(parentDirectory, sanitizedName)
-        NativeAdbService.ensureConnectionResponsive()
-        NativeAdbService.shell("mkdir -p ${quoteShellArg(remotePath)}")
+        LocalContainerShell.ensureConnectionResponsive()
+        LocalContainerShell.shell("mkdir -p ${quoteShellArg(localPath(remotePath))}")
         return@withContext remotePath
     }
 
@@ -144,12 +142,12 @@ object FileManagerService {
         fileName: String,
     ): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            NativeAdbService.ensureConnectionResponsive()
+            LocalContainerShell.ensureConnectionResponsive()
             val targetRoot = PublicDirs.transferDirectory()
             ensureDirectoryExists(targetRoot)
             val targetFile = uniqueFile(targetRoot, fileName)
             targetFile.outputStream().use { output ->
-                NativeAdbService.pull(remotePath, output)
+                LocalContainerShell.pull(remotePath, output)
             }
         }.isSuccess
     }
@@ -158,7 +156,7 @@ object FileManagerService {
         snapshot: DirectoryDownloadSnapshot,
     ): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            NativeAdbService.ensureConnectionResponsive()
+            LocalContainerShell.ensureConnectionResponsive()
             val rootName = snapshot.remoteRootPath.substringAfterLast('/').ifBlank { "Scrcpy" }
             val publicRoot = PublicDirs.transferDirectory()
             ensureDirectoryExists(publicRoot)
@@ -171,7 +169,7 @@ object FileManagerService {
                 val targetFile = File(destinationRoot, relativePath)
                 ensureDirectoryExists(targetFile.parentFile)
                 targetFile.outputStream().use { output ->
-                    NativeAdbService.pull(
+                    LocalContainerShell.pull(
                         joinRemotePath(snapshot.remoteRootPath, relativePath),
                         output,
                     )
@@ -186,7 +184,7 @@ object FileManagerService {
         remotePath: String,
         fileName: String,
     ) = withContext(Dispatchers.IO) {
-        NativeAdbService.ensureConnectionResponsive()
+        LocalContainerShell.ensureConnectionResponsive()
         val rootDocument = DocumentsContract.buildDocumentUriUsingTree(
             treeUri,
             DocumentsContract.getTreeDocumentId(treeUri),
@@ -194,7 +192,7 @@ object FileManagerService {
         val target = createUniqueDocument(context, rootDocument, fileName, guessMimeType(fileName))
         context.contentResolver.openOutputStream(target, "w").use { output ->
             requireNotNull(output) { AppRuntime.stringResource(R.string.fm_exception_cannot_write_target) }
-            NativeAdbService.pull(remotePath, output)
+            LocalContainerShell.pull(remotePath, output)
         }
     }
 
@@ -203,7 +201,7 @@ object FileManagerService {
         treeUri: Uri,
         snapshot: DirectoryDownloadSnapshot,
     ) = withContext(Dispatchers.IO) {
-        NativeAdbService.ensureConnectionResponsive()
+        LocalContainerShell.ensureConnectionResponsive()
         val rootDocument = DocumentsContract.buildDocumentUriUsingTree(
             treeUri,
             DocumentsContract.getTreeDocumentId(treeUri),
@@ -223,7 +221,7 @@ object FileManagerService {
                 createUniqueDocument(context, parentDocument, fileName, guessMimeType(fileName))
             context.contentResolver.openOutputStream(target, "w").use { output ->
                 requireNotNull(output) { AppRuntime.stringResource(R.string.fm_exception_cannot_write_target) }
-                NativeAdbService.pull(joinRemotePath(snapshot.remoteRootPath, relativePath), output)
+                LocalContainerShell.pull(joinRemotePath(snapshot.remoteRootPath, relativePath), output)
             }
         }
     }
@@ -486,12 +484,14 @@ object FileManagerService {
         }
     }
 
+    private fun localPath(path: String): String = LocalContainerShell.resolve(path).path
+
     private fun pathForListCommand(path: String): String {
-        val normalized = path.trimEnd('/').ifBlank { "/" }
-        return if (normalized == "/") {
-            normalized
+        val resolved = localPath(path)
+        return if (path.trimEnd('/').ifBlank { "/" } == "/") {
+            resolved
         } else {
-            "$normalized/."
+            "$resolved/."
         }
     }
 
@@ -657,27 +657,28 @@ class DirectorySnapshotSession private constructor(
 ): Closeable {
     suspend fun load(path: String): DirectoryDownloadSnapshot {
         val normalizedPath = path.trimEnd('/').ifBlank { "/" }
+        val localRoot = LocalContainerShell.resolve(normalizedPath).path
         val totalBytes = parseDuBytes(
-            shellSession.execute("du -sb ${FileManagerService.quoteShellArg(normalizedPath)}"),
+            shellSession.execute("du -sb ${FileManagerService.quoteShellArg(localRoot)}"),
         )
 
         val directories = shellSession.execute(
-            "find ${FileManagerService.quoteShellArg(normalizedPath)} -type d",
+            "find ${FileManagerService.quoteShellArg(localRoot)} -type d",
         )
             .lineSequence()
             .map(String::trim)
-            .filter { it.isNotBlank() && it != normalizedPath }
-            .map { relativePath(normalizedPath, it) }
+            .filter { it.isNotBlank() && it != localRoot }
+            .map { relativePath(localRoot, it) }
             .filter { it.isNotBlank() }
             .toList()
 
         val files = shellSession.execute(
-            "find ${FileManagerService.quoteShellArg(normalizedPath)} -type f",
+            "find ${FileManagerService.quoteShellArg(localRoot)} -type f",
         )
             .lineSequence()
             .map(String::trim)
-            .filter { it.isNotBlank() && it != normalizedPath }
-            .map { relativePath(normalizedPath, it) }
+            .filter { it.isNotBlank() && it != localRoot }
+            .map { relativePath(localRoot, it) }
             .filter { it.isNotBlank() }
             .toList()
 
@@ -723,7 +724,7 @@ class DirectorySnapshotSession private constructor(
 }
 
 private class InteractiveShellSession private constructor(
-    private val stream: AdbSocketStream,
+    private val process: Process,
 ): Closeable {
     private val mutex = Mutex()
 
@@ -738,21 +739,21 @@ private class InteractiveShellSession private constructor(
                 append(marker)
                 append(":%d\\n' $?\n")
             }.toByteArray(StandardCharsets.UTF_8)
-            stream.outputStream.write(commandBytes)
-            stream.outputStream.flush()
+            process.outputStream.write(commandBytes)
+            process.outputStream.flush()
             readUntilMarker(marker)
         }
     }
 
     suspend fun interrupt() = withContext(Dispatchers.IO) {
         runCatching {
-            stream.outputStream.write(byteArrayOf(3))
-            stream.outputStream.flush()
+            process.outputStream.write(byteArrayOf(3))
+            process.outputStream.flush()
         }
     }
 
     override fun close() {
-        runCatching { stream.close() }
+        LocalContainerShell.destroy(process)
     }
 
     private fun readUntilMarker(marker: String): String {
@@ -761,7 +762,7 @@ private class InteractiveShellSession private constructor(
         val markerPrefix = "\n$marker:"
 
         while (true) {
-            val count = stream.inputStream.read(buffer)
+            val count = process.inputStream.read(buffer)
             if (count <= 0)
                 throw IOException(AppRuntime.stringResource(R.string.fm_exception_remote_shell_closed))
 
@@ -786,7 +787,7 @@ private class InteractiveShellSession private constructor(
     companion object {
         suspend fun open(): InteractiveShellSession {
             return withContext(Dispatchers.IO) {
-                InteractiveShellSession(NativeAdbService.openShellStream(""))
+                InteractiveShellSession(LocalContainerShell.openShellProcess())
             }
         }
     }

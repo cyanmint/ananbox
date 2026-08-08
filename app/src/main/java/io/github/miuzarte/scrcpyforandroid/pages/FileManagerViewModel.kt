@@ -16,7 +16,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 private const val ROOT_REMOTE_PATH = "/"
-private const val INITIAL_REMOTE_PATH = "/storage/emulated/0"
+private const val INITIAL_REMOTE_PATH = "/"
 
 internal enum class FileManagerSortField { NAME, SIZE, TIME, EXTENSION }
 
