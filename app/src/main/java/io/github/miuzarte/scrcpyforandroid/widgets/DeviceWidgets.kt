@@ -374,13 +374,8 @@ internal fun PreviewCard(
                         .align(Alignment.Center)
                         .then(fittedModifier),
                 ) {
-                    ScrcpyVideoSurface(
+                    ContainerVideoSurface(
                         modifier = Modifier.fillMaxSize(),
-                        session = sessionInfo,
-                        imeRequestToken = imeRequestToken,
-                        onImeCommitText = onImeCommitText,
-                        onImeDeleteSurroundingText = onImeDeleteSurroundingText,
-                        onImeKeyEvent = onImeKeyEvent,
                     )
                 }
             }
