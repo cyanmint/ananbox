@@ -20,7 +20,12 @@ object Anbox: View.OnTouchListener {
     external fun startRuntime()
     external fun destroyWindow()
     external fun stopRuntime()
-    external fun startContainer(cmd: String)
+    /**
+     * Forks & execs [cmd], redirecting its stdout/stderr to a pipe whose
+     * read end file descriptor is returned so the caller can stream the
+     * executed command's output (e.g. into the app's log box).
+     */
+    external fun startContainer(cmd: String): Int
     external fun resetWindow(height: Int, width: Int)
     external fun createSurface(surface: Surface)
     external fun destroySurface()

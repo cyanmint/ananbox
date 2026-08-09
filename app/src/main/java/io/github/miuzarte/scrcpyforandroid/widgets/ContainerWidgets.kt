@@ -1,5 +1,6 @@
 package io.github.miuzarte.scrcpyforandroid.widgets
 
+import android.os.ParcelFileDescriptor
 import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -25,10 +26,38 @@ import com.cyanmint.anbox.R
 import io.github.miuzarte.scrcpyforandroid.container.ContainerProfileManager
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.pages.ContainerState
+import io.github.miuzarte.scrcpyforandroid.services.EventLogger
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import kotlin.concurrent.thread
+
+/**
+ * Reads the container launch command's stdout/stderr (returned as a raw fd
+ * by [Anbox.startContainer]) line by line and forwards each line to
+ * [EventLogger] so it shows up in the app's log box, mirroring how scrcpy
+ * server output is surfaced.
+ */
+private fun streamContainerOutputToLog(fd: Int) {
+    if (fd < 0) return
+    thread(start = true, name = "container-output-log") {
+        try {
+            ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.adoptFd(fd)).use { input ->
+                BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { reader ->
+                    while (true) {
+                        val line = reader.readLine() ?: break
+                        EventLogger.logEvent(line)
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Pipe closed / process exited; nothing more to log.
+        }
+    }
+}
 
 /**
  * Renders this app's own container output (via the native Anbox renderer)
@@ -77,7 +106,9 @@ fun ContainerVideoSurface(modifier: Modifier = Modifier) {
                                 Anbox.startRuntime()
                                 val prootCommand = ContainerProfileManager.getProotCommand(ctx, profile)
                                     ?: ContainerProfileManager.defaultProotCommand(ctx, profile)
-                                Anbox.startContainer(prootCommand)
+                                EventLogger.logEvent(prootCommand)
+                                val outputFd = Anbox.startContainer(prootCommand)
+                                streamContainerOutputToLog(outputFd)
                             }
                             runtimeStarted = true
                         } else {

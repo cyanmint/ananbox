@@ -199,14 +199,8 @@ Java_com_cyanmint_anbox_Anbox_initRuntime(
     return true;
 }
 extern "C"
-JNIEXPORT void JNICALL
+JNIEXPORT jint JNICALL
 Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring cmd_) {
-    if (fork() != 0) {
-        return;
-    }
-    sigset_t signals_to_unblock;
-    sigfillset(&signals_to_unblock);
-    sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
     const char *cmd_chars = env->GetStringUTFChars(cmd_, 0);
     std::string cmd(cmd_chars);
     env->ReleaseStringUTFChars(cmd_, cmd_chars);
@@ -217,8 +211,40 @@ Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
             std::istream_iterator<std::string>{}};
     if (args_storage.empty()) {
         __android_log_print(ANDROID_LOG_ERROR, TAG, "proot command is empty");
-        return;
+        return -1;
     }
+
+    // Pipe used to forward the child's stdout/stderr back to the Java side
+    // so the executed command's output can be shown in the app's log box.
+    int out_pipe[2];
+    if (pipe(out_pipe) != 0) {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "pipe() failed: %s", strerror(errno));
+        return -1;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "fork() failed: %s", strerror(errno));
+        close(out_pipe[0]);
+        close(out_pipe[1]);
+        return -1;
+    }
+    if (pid != 0) {
+        // Parent: keep the read end open for Java to consume, we don't need
+        // the write end.
+        close(out_pipe[1]);
+        return out_pipe[0];
+    }
+
+    // Child.
+    close(out_pipe[0]);
+    dup2(out_pipe[1], STDOUT_FILENO);
+    dup2(out_pipe[1], STDERR_FILENO);
+    close(out_pipe[1]);
+
+    sigset_t signals_to_unblock;
+    sigfillset(&signals_to_unblock);
+    sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
 
     // Run the command with the profile's rootfs as the working directory, so
     // relative paths in a custom launch command (e.g. "sh run.sh . ./proot")
@@ -238,6 +264,7 @@ Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     args.push_back(nullptr);
     execvp(args_storage[0].c_str(), args.data());
     __android_log_print(ANDROID_LOG_ERROR, TAG, "proot command excuted failed: %s", strerror(errno));
+    _exit(1);
  }
 extern "C"
 JNIEXPORT void JNICALL
