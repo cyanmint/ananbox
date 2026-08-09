@@ -256,6 +256,15 @@ Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
                              rootfs_dir.c_str(), strerror(errno));
     }
 
+    // Some proot builds accelerate ptrace-based syscall tracing using
+    // seccomp, but that fast path can fail to correctly emulate certain
+    // syscalls (e.g. capset(), which the guest's Zygote calls when forking
+    // system_server), causing the guest to abort in a boot loop with
+    // "capset failed" and never finish booting far enough to render
+    // anything. Force the slower but more compatible pure-ptrace mode
+    // unless the launch command already overrides it.
+    setenv("PROOT_NO_SECCOMP", "1", 0);
+
     std::vector<char *> args;
     args.reserve(args_storage.size() + 1);
     for (auto &arg : args_storage) {
