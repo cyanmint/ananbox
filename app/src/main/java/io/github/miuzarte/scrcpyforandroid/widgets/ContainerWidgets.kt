@@ -6,21 +6,33 @@ import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.WindowManager
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.cyanmint.anbox.Anbox
 import com.cyanmint.anbox.R
 import io.github.miuzarte.scrcpyforandroid.container.ContainerProfileManager
@@ -156,6 +168,13 @@ fun ContainerSection(
     var showSelectDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
+    var isFullscreen by rememberSaveable { mutableStateOf(false) }
+
+    // Preserved across the compact card location and the fullscreen overlay so
+    // the underlying SurfaceView (and running container) survives the move.
+    val videoSurface = remember {
+        movableContentOf<Modifier> { mod -> ContainerVideoSurface(modifier = mod) }
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -213,13 +232,32 @@ fun ContainerSection(
                 colors = ButtonDefaults.textButtonColorsPrimary(),
             )
             if (state.started) {
-                ContainerVideoSurface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(240.dp),
-                )
+                Box(modifier = Modifier.fillMaxWidth().height(240.dp)) {
+                    videoSurface(Modifier.fillMaxSize())
+                    IconButton(
+                        onClick = {
+                            haptic.contextClick()
+                            isFullscreen = true
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(UiSpacing.Medium),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Fullscreen,
+                            contentDescription = stringResource(R.string.cd_fullscreen),
+                        )
+                    }
+                }
             }
         }
+    }
+
+    if (isFullscreen) {
+        ContainerFullscreenOverlay(
+            videoSurface = videoSurface,
+            onExitFullscreen = { isFullscreen = false },
+        )
     }
 
     ContainerSelectProfileDialog(
@@ -246,6 +284,70 @@ fun ContainerSection(
         onImport = { onImportRootfs(it); showImportDialog = false },
         onDismissRequest = { showImportDialog = false },
     )
+}
+
+/**
+ * Fullscreen, immersive overlay for the in-page container renderer, mirroring
+ * the fullscreen mode of the original Ananbox app: hides the system bars and
+ * expands the running renderer to fill the entire screen.
+ */
+@Composable
+private fun ContainerFullscreenOverlay(
+    videoSurface: @Composable (Modifier) -> Unit,
+    onExitFullscreen: () -> Unit,
+) {
+    val haptic = LocalHapticFeedback.current
+
+    Dialog(
+        onDismissRequest = onExitFullscreen,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        val view = LocalView.current
+        DisposableEffect(view) {
+            val window = (view.parent as? DialogWindowProvider)?.window
+            if (window != null) {
+                window.setLayout(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                )
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                val controller = WindowInsetsControllerCompat(window, window.decorView)
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+            onDispose {
+                if (window != null) {
+                    WindowInsetsControllerCompat(window, window.decorView).show(
+                        WindowInsetsCompat.Type.systemBars(),
+                    )
+                    WindowCompat.setDecorFitsSystemWindows(window, true)
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+        ) {
+            videoSurface(Modifier.fillMaxSize())
+            IconButton(
+                onClick = {
+                    haptic.contextClick()
+                    onExitFullscreen()
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(UiSpacing.Medium),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.FullscreenExit,
+                    contentDescription = stringResource(R.string.cd_fullscreen),
+                )
+            }
+        }
+    }
 }
 
 @Composable
