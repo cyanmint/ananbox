@@ -29,10 +29,10 @@ android {
 
         externalNativeBuild {
             cmake {
-                targets "anbox", "proot"
+                targets "anbox"
                 // AGP 9 no longer passes this, so the NDK defaults to the legacy
                 // toolchain file which hardcodes CMAKE_SYSTEM_VERSION=1 and breaks
-                // the talloc/proot clang target triple (aarch64-linux-android1-clang).
+                // clang target triples that rely on the real system version.
                 arguments "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=false"
             }
         }

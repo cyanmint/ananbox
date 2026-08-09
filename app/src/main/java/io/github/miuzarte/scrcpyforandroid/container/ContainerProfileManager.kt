@@ -95,8 +95,10 @@ object ContainerProfileManager {
     }
 
     fun defaultProotCommand(context: Context, name: String = currentProfile(context)): String {
-        val proot = context.applicationInfo.nativeLibraryDir + "/libproot.so"
         val rootfs = rootfsDir(context, name).path
+        // proot is no longer bundled with the app; the rom/rootfs ships its own
+        // proot binary at bin/proot inside the rootfs.
+        val proot = "$rootfs/bin/proot"
         return "$proot --link2symlink -0 -r $rootfs -b /dev -b /proc -b /sys -w / /system/bin/sh"
     }
 }
