@@ -182,6 +182,10 @@
     <string name="container_rename_profile">Rename profile</string>
     <string name="container_delete_profile">Delete profile</string>
     <string name="container_proot_command">proot command</string>
+    <string name="container_launch_command">Launch command</string>
+    <string name="container_launch_command_hint">Command used to start the container (proot …)</string>
+    <string name="container_start">Start (Anbox)</string>
+    <string name="container_stop">Stop</string>
     <string name="container_import_destination_title">Import rootfs into profile</string>
     <string name="container_importing">Importing rootfs…</string>
     <string name="container_import_success">Rootfs imported into %1$s</string>

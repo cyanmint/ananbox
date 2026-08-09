@@ -103,8 +103,9 @@ fun ContainerVideoSurface(modifier: Modifier = Modifier) {
 
 /**
  * Main-tab "Container" section: shows the active profile (instead of the
- * active adb connection), lets the user pick/rename/add profiles, and
- * import a rootfs tarball for the selected profile.
+ * active adb connection), lets the user pick/rename/add profiles, import a
+ * rootfs tarball for the selected profile, and start/stop the container,
+ * showing the in-page native Anbox renderer once started.
  */
 @Composable
 fun ContainerSection(
@@ -114,6 +115,10 @@ fun ContainerSection(
     onRenameProfile: (String) -> Boolean,
     onDeleteProfile: (String) -> Unit,
     onImportRootfs: (targetProfile: String) -> Unit,
+    launchCommand: () -> String,
+    onSetLaunchCommand: (String) -> Unit,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
     var showSelectDialog by remember { mutableStateOf(false) }
@@ -163,6 +168,25 @@ fun ContainerSection(
                     modifier = Modifier.weight(1f),
                 )
             }
+            TextButton(
+                text = stringResource(
+                    if (state.started) R.string.container_stop else R.string.container_start,
+                ),
+                onClick = {
+                    haptic.contextClick()
+                    if (state.started) onStop() else onStart()
+                },
+                enabled = state.hasRootfs,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+            )
+            if (state.started) {
+                ContainerVideoSurface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp),
+                )
+            }
         }
     }
 
@@ -179,6 +203,8 @@ fun ContainerSection(
         state = state,
         onRename = onRenameProfile,
         onDelete = { onDeleteProfile(it); showEditDialog = false },
+        launchCommand = launchCommand,
+        onSetLaunchCommand = onSetLaunchCommand,
         onDismissRequest = { showEditDialog = false },
     )
 
@@ -250,10 +276,13 @@ private fun ContainerEditProfileDialog(
     state: ContainerState,
     onRename: (String) -> Boolean,
     onDelete: (String) -> Unit,
+    launchCommand: () -> String,
+    onSetLaunchCommand: (String) -> Unit,
     onDismissRequest: () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
     var name by rememberSaveable(show, state.activeProfile) { mutableStateOf(state.activeProfile) }
+    var command by rememberSaveable(show, state.activeProfile) { mutableStateOf(launchCommand()) }
 
     OverlayDialog(
         show = show,
@@ -288,6 +317,23 @@ private fun ContainerEditProfileDialog(
                     colors = ButtonDefaults.textButtonColorsPrimary(),
                 )
             }
+            TextField(
+                value = command,
+                onValueChange = { command = it },
+                label = stringResource(R.string.container_launch_command_hint),
+                singleLine = false,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            TextButton(
+                text = stringResource(R.string.container_launch_command),
+                onClick = {
+                    haptic.contextClick()
+                    onSetLaunchCommand(command)
+                },
+                enabled = command.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+            )
             TextButton(
                 text = stringResource(R.string.container_delete_profile),
                 onClick = {

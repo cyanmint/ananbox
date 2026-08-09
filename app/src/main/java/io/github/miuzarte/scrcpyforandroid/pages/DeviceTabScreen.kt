@@ -334,6 +334,10 @@ internal fun DeviceTabPage(
                 rootfsImportTargetProfile.value = target
                 rootfsPicker.launch(arrayOf("application/x-tar", "application/octet-stream", "*/*"))
             },
+            launchCommand = { containerViewModel.prootCommand() },
+            onSetLaunchCommand = { containerViewModel.setProotCommand(it) },
+            onStart = { containerViewModel.start() },
+            onStop = { containerViewModel.stop() },
         )
     }
 
@@ -600,19 +604,17 @@ internal fun DeviceTabPage(
 
     @Composable
     fun LogsSection() {
-        if (!asBundle.hideDeviceLogs && EventLogger.hasLogs()) {
-            val context = LocalContext.current
-            SectionSmallTitle(stringResource(R.string.device_section_logs))
-            Card {
-                TextField(
-                    value = EventLogger.eventLog.joinToString(separator = "\n") {
-                        it.render(context)
-                    },
-                    onValueChange = {},
-                    readOnly = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+        val context = LocalContext.current
+        SectionSmallTitle(stringResource(R.string.device_section_logs))
+        Card {
+            TextField(
+                value = EventLogger.eventLog.joinToString(separator = "\n") {
+                    it.render(context)
+                },
+                onValueChange = {},
+                readOnly = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 

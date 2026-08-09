@@ -187,6 +187,7 @@ private fun TerminalPage(
             },
             onPasteTextFromClipboardRequested = { viewModel.writeClipboardToShell(context) },
             onBellRequested = {},
+            onSizeChanged = { columns, rows -> viewModel.resizePtyWindow(rows, columns) },
         ).also { viewModel.sessionHolder[0] = it }
     }
 

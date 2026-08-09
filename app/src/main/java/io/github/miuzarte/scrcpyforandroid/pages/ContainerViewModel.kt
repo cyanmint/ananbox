@@ -19,6 +19,7 @@ data class ContainerState(
     val activeProfile: String = ContainerProfileManager.DEFAULT_PROFILE,
     val hasRootfs: Boolean = false,
     val importing: Boolean = false,
+    val started: Boolean = false,
 )
 
 /**
@@ -38,6 +39,7 @@ class ContainerViewModel: ViewModel() {
             profiles = ContainerProfileManager.listProfiles(context),
             activeProfile = profile,
             hasRootfs = ContainerProfileManager.hasRootfs(context, profile),
+            started = _state.value.started,
         )
     }
 
@@ -45,8 +47,18 @@ class ContainerViewModel: ViewModel() {
         _state.value = refreshedState()
     }
 
+    fun start() {
+        if (!_state.value.hasRootfs) return
+        _state.value = _state.value.copy(started = true)
+    }
+
+    fun stop() {
+        _state.value = _state.value.copy(started = false)
+    }
+
     fun selectProfile(name: String) {
         ContainerProfileManager.setCurrentProfile(context, name)
+        _state.value = _state.value.copy(started = false)
         refresh()
     }
 

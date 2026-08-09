@@ -10,6 +10,7 @@ import com.termux.terminal.KeyHandler
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TextStyle
 import com.cyanmint.anbox.R
+import com.cyanmint.anbox.terminal.PtySession
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import io.github.miuzarte.scrcpyforandroid.services.LocalInputService
 import io.github.miuzarte.scrcpyforandroid.storage.BundleSyncDelegate
@@ -61,7 +62,7 @@ internal class TerminalViewModel: ViewModel() {
     private val _shellConnecting = MutableStateFlow(false)
     val shellConnecting: StateFlow<Boolean> = _shellConnecting.asStateFlow()
 
-    private var shellProcess: Process? = null
+    private var shellProcess: PtySession? = null
     private var shellWriterJob: Job? = null
     private var shellWriteChannel = Channel<ByteArray>(Channel.UNLIMITED)
 
@@ -71,11 +72,11 @@ internal class TerminalViewModel: ViewModel() {
         shellWriteChannel = Channel(Channel.UNLIMITED)
         shellWriterJob = viewModelScope.launch(Dispatchers.IO) {
             for (payload in shellWriteChannel) {
-                val stream = shellProcess ?: break
-                if (!stream.isAlive) break
+                val session = shellProcess ?: break
+                if (!session.isAlive) break
                 val result = runCatching {
-                    stream.outputStream.write(payload)
-                    stream.outputStream.flush()
+                    session.outputStream.write(payload)
+                    session.outputStream.flush()
                 }
                 if (result.isFailure) {
                     withContext(Dispatchers.Main) {
@@ -173,7 +174,8 @@ internal class TerminalViewModel: ViewModel() {
     /**
      * Launches a plain "sh" shell (no adb involved) with its working directory
      * set to this app's own internal storage, i.e.
-     * /data/user/&lt;userId&gt;/com.cyanmint.anbox/files.
+     * /data/user/&lt;userId&gt;/com.cyanmint.anbox/files, attached to a real
+     * pty so job control and local echo behave like a normal terminal.
      */
     fun openShellSession(showKeyboardAfterConnect: Boolean, requestFocus: () -> Unit) {
         if (shellProcess != null || _shellConnecting.value) {
@@ -183,14 +185,10 @@ internal class TerminalViewModel: ViewModel() {
         _shellConnecting.value = true
         viewModelScope.launch(Dispatchers.IO) {
             val appDir = AppRuntime.context.filesDir
-            val processResult = runCatching {
-                appDir.mkdirs()
-                ProcessBuilder("/system/bin/sh", "-i")
-                    .directory(appDir)
-                    .redirectErrorStream(true)
-                    .start()
+            val sessionResult = runCatching {
+                PtySession.start(cmd = "/system/bin/sh", cwd = appDir)
             }
-            val process = processResult.getOrElse { error ->
+            val session = sessionResult.getOrElse { error ->
                 withContext(Dispatchers.Main) {
                     _shellConnecting.value = false
                     _shellReady.value = false
@@ -203,7 +201,7 @@ internal class TerminalViewModel: ViewModel() {
             }
 
             withContext(Dispatchers.Main) {
-                shellProcess = process
+                shellProcess = session
                 _shellReady.value = true
                 _shellConnecting.value = false
                 startShellWriter()
@@ -212,8 +210,8 @@ internal class TerminalViewModel: ViewModel() {
 
             val buffer = ByteArray(4096)
             try {
-                while (process.isAlive) {
-                    val count = process.inputStream.read(buffer)
+                while (session.isAlive) {
+                    val count = session.inputStream.read(buffer)
                     if (count <= 0) break
                     withContext(Dispatchers.Main) {
                         sessionHolder[0]?.append(buffer, count)
@@ -227,16 +225,21 @@ internal class TerminalViewModel: ViewModel() {
                     )
                 }
             } finally {
-                runCatching { process.destroy() }
+                runCatching { session.destroy() }
                 withContext(Dispatchers.Main) {
                     shellWriterJob?.cancel()
                     shellWriterJob = null
-                    if (shellProcess === process) shellProcess = null
+                    if (shellProcess === session) shellProcess = null
                     _shellReady.value = false
                     _shellConnecting.value = false
                 }
             }
         }
+    }
+
+    /** Propagates a terminal resize to the pty so the shell's line discipline stays in sync. */
+    fun resizePtyWindow(rows: Int, columns: Int) {
+        shellProcess?.updateSize(rows, columns)
     }
 
     fun autoConnectIfNeeded(onFocus: () -> Unit) {
