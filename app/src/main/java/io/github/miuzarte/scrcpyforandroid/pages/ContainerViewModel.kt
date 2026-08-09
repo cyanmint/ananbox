@@ -30,16 +30,16 @@ class ContainerViewModel: ViewModel() {
 
     private val context get() = AppRuntime.context
 
-    private val _state = MutableStateFlow(refreshedState())
+    private val _state = MutableStateFlow(refreshedState(started = false))
     val state: StateFlow<ContainerState> = _state.asStateFlow()
 
-    private fun refreshedState(): ContainerState {
+    private fun refreshedState(started: Boolean = _state.value.started): ContainerState {
         val profile = ContainerProfileManager.currentProfile(context)
         return ContainerState(
             profiles = ContainerProfileManager.listProfiles(context),
             activeProfile = profile,
             hasRootfs = ContainerProfileManager.hasRootfs(context, profile),
-            started = _state.value.started,
+            started = started,
         )
     }
 
