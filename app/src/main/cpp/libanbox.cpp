@@ -8,6 +8,8 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <csignal>
+#include <sys/wait.h>
 #include <android/input.h>
 #include "anbox/graphics/emugl/Renderer.h"
 #include "anbox/graphics/emugl/RenderApi.h"
@@ -52,6 +54,25 @@ static std::shared_ptr<anbox::network::PublishedSocketConnector> qemu_pipe_conne
 static std::shared_ptr<anbox::input::Device> touch_;
 static ANativeWindow* native_window;
 static char path[255];
+// pid of the currently running container launch command (fork()+execvp'd by
+// startContainer), or -1 if none is running. Tracked so a stale/duplicate
+// container process (e.g. left running by a previous, disposed composable)
+// can be terminated before starting a new one instead of racing with it over
+// the same rootfs/dev directories.
+static pid_t container_pid = -1;
+
+static void terminate_container_locked() {
+    if (container_pid <= 0) return;
+    pid_t pid = container_pid;
+    container_pid = -1;
+    // The child called setpgid(0, 0), making its own pid the process group
+    // id, so signalling -pid reaches the whole group (launch script,
+    // backgrounded proot, and the guest init it ptraces).
+    kill(-pid, SIGKILL);
+    kill(pid, SIGKILL);
+    int status;
+    waitpid(pid, &status, 0);
+}
 
 
 void logger_write(const emugl::LogLevel &level, const char *format, ...) {
@@ -222,6 +243,12 @@ Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
         return -1;
     }
 
+    // A previous container launch (e.g. left running by a disposed/recreated
+    // composable) may still be alive; kill it first so it doesn't race the
+    // new one over the same rootfs/dev/socket/dev/__properties__ files,
+    // which was leaving the guest only partially booted.
+    terminate_container_locked();
+
     pid_t pid = fork();
     if (pid < 0) {
         __android_log_print(ANDROID_LOG_ERROR, TAG, "fork() failed: %s", strerror(errno));
@@ -233,6 +260,7 @@ Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
         // Parent: keep the read end open for Java to consume, we don't need
         // the write end.
         close(out_pipe[1]);
+        container_pid = pid;
         return out_pipe[0];
     }
 
@@ -245,6 +273,13 @@ Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     sigset_t signals_to_unblock;
     sigfillset(&signals_to_unblock);
     sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
+
+    // Become the leader of a new process group so the launch script's
+    // descendants (the backgrounded proot process and the guest init it
+    // ptraces) can all be killed together via terminate_container_locked(),
+    // instead of only reaping this immediate child while proot/init keep
+    // running in the background.
+    setpgid(0, 0);
 
     // Run the command with the profile's rootfs as the working directory, so
     // relative paths in a custom launch command (e.g. "sh run.sh . ./proot")
@@ -275,6 +310,11 @@ Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
     __android_log_print(ANDROID_LOG_ERROR, TAG, "proot command excuted failed: %s", strerror(errno));
     _exit(1);
  }
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cyanmint_anbox_Anbox_stopContainer(JNIEnv *env, jobject thiz) {
+    terminate_container_locked();
+}
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_cyanmint_anbox_Anbox_resetWindow(JNIEnv *env, jobject thiz, jint height, jint width) {

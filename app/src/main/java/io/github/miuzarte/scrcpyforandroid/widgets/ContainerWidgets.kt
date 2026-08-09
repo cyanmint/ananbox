@@ -73,6 +73,7 @@ fun ContainerVideoSurface(modifier: Modifier = Modifier) {
     DisposableEffect(Unit) {
         onDispose {
             if (runtimeStarted) {
+                runCatching { Anbox.stopContainer() }
                 runCatching { Anbox.stopRuntime() }
                 runtimeStarted = false
             }

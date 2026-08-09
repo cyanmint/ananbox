@@ -2,13 +2,11 @@ package com.cyanmint.anbox
 
 import android.os.Build
 import android.os.Parcel
-import android.util.Log
 import android.view.MotionEvent
 import android.view.Surface
 import android.view.View
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
-import kotlin.system.exitProcess
 
 object Anbox: View.OnTouchListener {
     init {
@@ -26,6 +24,13 @@ object Anbox: View.OnTouchListener {
      * executed command's output (e.g. into the app's log box).
      */
     external fun startContainer(cmd: String): Int
+    /**
+     * Kills the container process (and its whole process group, i.e. the
+     * launch script, the backgrounded proot process and the guest init it
+     * ptraces) started by [startContainer], if one is still running. Safe to
+     * call even if no container is running.
+     */
+    external fun stopContainer()
     external fun resetWindow(height: Int, width: Int)
     external fun createSurface(surface: Surface)
     external fun destroySurface()
@@ -35,13 +40,6 @@ object Anbox: View.OnTouchListener {
     external fun pushFingerDown(x: Int, y: Int, fingerId: Int)
     external fun pushFingerMotion(x: Int, y: Int, fingerId: Int)
     external fun dumpParcel(parcel: Parcel, path: String)
-
-    fun stopContainer() {
-        Log.d("Anbox", "stopContainer")
-        // TODO: better way to stop the container
-        Runtime.getRuntime().exec("killall init")
-        exitProcess(0)
-    }
 
     override fun onTouch(v: View, e: MotionEvent): Boolean {
         when (e.action) {
