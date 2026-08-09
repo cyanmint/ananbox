@@ -219,13 +219,24 @@ Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
         __android_log_print(ANDROID_LOG_ERROR, TAG, "proot command is empty");
         return;
     }
+
+    // Run the command with the profile's rootfs as the working directory, so
+    // relative paths in a custom launch command (e.g. "sh run.sh . ./proot")
+    // resolve against the rootfs instead of whatever directory this process
+    // happened to inherit.
+    std::string rootfs_dir = anbox::utils::string_format("%s/rootfs", path);
+    if (chdir(rootfs_dir.c_str()) != 0) {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "chdir to %s failed: %s",
+                             rootfs_dir.c_str(), strerror(errno));
+    }
+
     std::vector<char *> args;
     args.reserve(args_storage.size() + 1);
     for (auto &arg : args_storage) {
         args.push_back(const_cast<char *>(arg.c_str()));
     }
     args.push_back(nullptr);
-    execv(args_storage[0].c_str(), args.data());
+    execvp(args_storage[0].c_str(), args.data());
     __android_log_print(ANDROID_LOG_ERROR, TAG, "proot command excuted failed: %s", strerror(errno));
  }
 extern "C"
