@@ -1,15 +1,17 @@
-package com.cyanmint.anbox
+package io.github.miuzarte.scrcpyforandroid.container
 
 import android.content.Context
 import java.io.File
 
 /**
- * Manages multiple independent profiles. Each profile has its own rootfs
- * directory and its own settings (e.g. proot command), so different profiles
- * can run completely different Linux root filesystems / configurations.
+ * Manages multiple independent container profiles. Each profile has its own
+ * rootfs directory and its own settings (e.g. proot command), so different
+ * profiles can run completely different Linux root filesystems /
+ * configurations. This replaces the old adb "connected device" concept as
+ * the primary thing shown/selected on the main tab.
  */
-object ProfileManager {
-    private const val PREFS_NAME = "profiles"
+object ContainerProfileManager {
+    private const val PREFS_NAME = "container_profiles"
     private const val KEY_PROFILE_LIST = "profile_list"
     private const val KEY_CURRENT_PROFILE = "current_profile"
     const val DEFAULT_PROFILE = "default"
@@ -48,6 +50,17 @@ object ProfileManager {
         return true
     }
 
+    fun renameProfile(context: Context, oldName: String, newName: String): Boolean {
+        val sanitized = newName.trim()
+        if (sanitized.isBlank() || sanitized.contains("/") || sanitized.contains("..")) return false
+        val profiles = listProfiles(context)
+        if (!profiles.contains(oldName) || profiles.contains(sanitized)) return false
+        profileDir(context, oldName).renameTo(profileDir(context, sanitized))
+        saveProfiles(context, profiles.map { if (it == oldName) sanitized else it })
+        if (currentProfile(context) == oldName) setCurrentProfile(context, sanitized)
+        return true
+    }
+
     fun removeProfile(context: Context, name: String) {
         val profiles = listProfiles(context).filter { it != name }
         saveProfiles(context, profiles.ifEmpty { listOf(DEFAULT_PROFILE) })
@@ -57,9 +70,9 @@ object ProfileManager {
         }
     }
 
-    /** Base directory for the given profile, e.g. files/profiles/<name>/ */
+    /** Base directory for the given profile, e.g. files/container-profiles/<name>/ */
     fun profileDir(context: Context, name: String = currentProfile(context)): File {
-        return File(File(context.filesDir, "profiles"), name)
+        return File(File(context.filesDir, "container-profiles"), name)
     }
 
     fun rootfsDir(context: Context, name: String = currentProfile(context)): File {
@@ -67,11 +80,11 @@ object ProfileManager {
     }
 
     fun hasRootfs(context: Context, name: String = currentProfile(context)): Boolean {
-        return rootfsDir(context, name).exists()
+        return rootfsDir(context, name).exists() && rootfsDir(context, name).list()?.isNotEmpty() == true
     }
 
     private fun settingsPrefs(context: Context, name: String) =
-        context.getSharedPreferences("profile_$name", Context.MODE_PRIVATE)
+        context.getSharedPreferences("container_profile_$name", Context.MODE_PRIVATE)
 
     fun getProotCommand(context: Context, name: String = currentProfile(context)): String? {
         return settingsPrefs(context, name).getString("proot_command", null)

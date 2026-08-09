@@ -9,6 +9,7 @@ class TerminalSession(
     private val onCopyTextToClipboardRequested: (String) -> Unit,
     private val onPasteTextFromClipboardRequested: () -> Unit,
     private val onBellRequested: () -> Unit,
+    private val onSizeChanged: (columns: Int, rows: Int) -> Unit = { _, _ -> },
 ) : TerminalOutput() {
 
     var emulator: TerminalEmulator = createEmulator()
@@ -32,6 +33,7 @@ class TerminalSession(
         cellHeightPixels: Int,
     ) {
         emulator.resize(columns, rows, cellWidthPixels, cellHeightPixels)
+        onSizeChanged(columns, rows)
         onScreenUpdated()
     }
 

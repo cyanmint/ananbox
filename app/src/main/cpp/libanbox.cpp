@@ -6,7 +6,10 @@
 #include <vector>
 #include <iterator>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
+#include <csignal>
+#include <sys/wait.h>
 #include <android/input.h>
 #include "anbox/graphics/emugl/Renderer.h"
 #include "anbox/graphics/emugl/RenderApi.h"
@@ -51,6 +54,25 @@ static std::shared_ptr<anbox::network::PublishedSocketConnector> qemu_pipe_conne
 static std::shared_ptr<anbox::input::Device> touch_;
 static ANativeWindow* native_window;
 static char path[255];
+// pid of the currently running container launch command (fork()+execvp'd by
+// startContainer), or -1 if none is running. Tracked so a stale/duplicate
+// container process (e.g. left running by a previous, disposed composable)
+// can be terminated before starting a new one instead of racing with it over
+// the same rootfs/dev directories.
+static pid_t container_pid = -1;
+
+static void terminate_container_locked() {
+    if (container_pid <= 0) return;
+    pid_t pid = container_pid;
+    container_pid = -1;
+    // The child called setpgid(0, 0), making its own pid the process group
+    // id, so signalling -pid reaches the whole group (launch script,
+    // backgrounded proot, and the guest init it ptraces).
+    kill(-pid, SIGKILL);
+    kill(pid, SIGKILL);
+    int status;
+    waitpid(pid, &status, 0);
+}
 
 
 void logger_write(const emugl::LogLevel &level, const char *format, ...) {
@@ -198,14 +220,8 @@ Java_com_cyanmint_anbox_Anbox_initRuntime(
     return true;
 }
 extern "C"
-JNIEXPORT void JNICALL
+JNIEXPORT jint JNICALL
 Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring cmd_) {
-    if (fork() != 0) {
-        return;
-    }
-    sigset_t signals_to_unblock;
-    sigfillset(&signals_to_unblock);
-    sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
     const char *cmd_chars = env->GetStringUTFChars(cmd_, 0);
     std::string cmd(cmd_chars);
     env->ReleaseStringUTFChars(cmd_, cmd_chars);
@@ -216,17 +232,89 @@ Java_com_cyanmint_anbox_Anbox_startContainer(JNIEnv *env, jobject thiz, jstring 
             std::istream_iterator<std::string>{}};
     if (args_storage.empty()) {
         __android_log_print(ANDROID_LOG_ERROR, TAG, "proot command is empty");
-        return;
+        return -1;
     }
+
+    // Pipe used to forward the child's stdout/stderr back to the Java side
+    // so the executed command's output can be shown in the app's log box.
+    int out_pipe[2];
+    if (pipe(out_pipe) != 0) {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "pipe() failed: %s", strerror(errno));
+        return -1;
+    }
+
+    // A previous container launch (e.g. left running by a disposed/recreated
+    // composable) may still be alive; kill it first so it doesn't race the
+    // new one over the same rootfs/dev/socket/dev/__properties__ files,
+    // which was leaving the guest only partially booted.
+    terminate_container_locked();
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "fork() failed: %s", strerror(errno));
+        close(out_pipe[0]);
+        close(out_pipe[1]);
+        return -1;
+    }
+    if (pid != 0) {
+        // Parent: keep the read end open for Java to consume, we don't need
+        // the write end.
+        close(out_pipe[1]);
+        container_pid = pid;
+        return out_pipe[0];
+    }
+
+    // Child.
+    close(out_pipe[0]);
+    dup2(out_pipe[1], STDOUT_FILENO);
+    dup2(out_pipe[1], STDERR_FILENO);
+    close(out_pipe[1]);
+
+    sigset_t signals_to_unblock;
+    sigfillset(&signals_to_unblock);
+    sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
+
+    // Become the leader of a new process group so the launch script's
+    // descendants (the backgrounded proot process and the guest init it
+    // ptraces) can all be killed together via terminate_container_locked(),
+    // instead of only reaping this immediate child while proot/init keep
+    // running in the background.
+    setpgid(0, 0);
+
+    // Run the command with the profile's rootfs as the working directory, so
+    // relative paths in a custom launch command (e.g. "sh run.sh . ./proot")
+    // resolve against the rootfs instead of whatever directory this process
+    // happened to inherit.
+    std::string rootfs_dir = anbox::utils::string_format("%s/rootfs", path);
+    if (chdir(rootfs_dir.c_str()) != 0) {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "chdir to %s failed: %s",
+                             rootfs_dir.c_str(), strerror(errno));
+    }
+
+    // Some proot builds accelerate ptrace-based syscall tracing using
+    // seccomp, but that fast path can fail to correctly emulate certain
+    // syscalls (e.g. capset(), which the guest's Zygote calls when forking
+    // system_server), causing the guest to abort in a boot loop with
+    // "capset failed" and never finish booting far enough to render
+    // anything. Force the slower but more compatible pure-ptrace mode
+    // unless the launch command already overrides it.
+    setenv("PROOT_NO_SECCOMP", "1", 0);
+
     std::vector<char *> args;
     args.reserve(args_storage.size() + 1);
     for (auto &arg : args_storage) {
         args.push_back(const_cast<char *>(arg.c_str()));
     }
     args.push_back(nullptr);
-    execv(args_storage[0].c_str(), args.data());
+    execvp(args_storage[0].c_str(), args.data());
     __android_log_print(ANDROID_LOG_ERROR, TAG, "proot command excuted failed: %s", strerror(errno));
+    _exit(1);
  }
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cyanmint_anbox_Anbox_stopContainer(JNIEnv *env, jobject thiz) {
+    terminate_container_locked();
+}
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_cyanmint_anbox_Anbox_resetWindow(JNIEnv *env, jobject thiz, jint height, jint width) {
@@ -376,4 +464,196 @@ Java_com_cyanmint_anbox_Anbox_dumpParcel(JNIEnv *env, jobject thiz, jobject jpar
         close(fd);
     }
     env->ReleaseStringUTFChars(jpath, path);
+}
+
+// ---------------------------------------------------------------------------
+// PtyNative: allocates a real pseudo-terminal for the in-app terminal, so the
+// launched shell gets a controlling tty (job control, line discipline, local
+// echo) instead of a pair of anonymous pipes. Modeled after termux-app's
+// terminal-emulator/src/main/jni/termux.c.
+// ---------------------------------------------------------------------------
+#include <dirent.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/ioctl.h>
+#include <sys/wait.h>
+#include <termios.h>
+
+#define PTY_TAG "PtyNative"
+
+static int pty_throw_runtime_exception(JNIEnv* env, char const* message) {
+    jclass exClass = env->FindClass("java/lang/RuntimeException");
+    env->ThrowNew(exClass, message);
+    return -1;
+}
+
+static int pty_create_subprocess(
+        JNIEnv* env,
+        char const* cmd,
+        char const* cwd,
+        char* const argv[],
+        char** envp,
+        int* pProcessId,
+        jint rows,
+        jint columns) {
+    int ptm = open("/dev/ptmx", O_RDWR | O_CLOEXEC);
+    if (ptm < 0) return pty_throw_runtime_exception(env, "Cannot open /dev/ptmx");
+
+    char devname[64];
+    if (grantpt(ptm) || unlockpt(ptm) || ptsname_r(ptm, devname, sizeof(devname))) {
+        close(ptm);
+        return pty_throw_runtime_exception(
+            env, "Cannot grantpt()/unlockpt()/ptsname_r() on /dev/ptmx");
+    }
+
+    // Enable UTF-8 mode and disable flow control so Ctrl+S doesn't lock up input.
+    struct termios tios;
+    tcgetattr(ptm, &tios);
+    tios.c_iflag |= IUTF8;
+    tios.c_iflag &= ~(IXON | IXOFF);
+    tcsetattr(ptm, TCSANOW, &tios);
+
+    struct winsize sz = {
+        .ws_row = (unsigned short) rows,
+        .ws_col = (unsigned short) columns,
+    };
+    ioctl(ptm, TIOCSWINSZ, &sz);
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(ptm);
+        return pty_throw_runtime_exception(env, "Fork failed");
+    } else if (pid > 0) {
+        *pProcessId = (int) pid;
+        return ptm;
+    } else {
+        sigset_t signals_to_unblock;
+        sigfillset(&signals_to_unblock);
+        sigprocmask(SIG_UNBLOCK, &signals_to_unblock, 0);
+
+        close(ptm);
+        setsid();
+
+        int pts = open(devname, O_RDWR);
+        if (pts < 0) _exit(-1);
+        ioctl(pts, TIOCSCTTY, 0);
+
+        dup2(pts, 0);
+        dup2(pts, 1);
+        dup2(pts, 2);
+
+        DIR* self_dir = opendir("/proc/self/fd");
+        if (self_dir != nullptr) {
+            int self_dir_fd = dirfd(self_dir);
+            struct dirent* entry;
+            while ((entry = readdir(self_dir)) != nullptr) {
+                int fd = atoi(entry->d_name);
+                if (fd > 2 && fd != self_dir_fd) close(fd);
+            }
+            closedir(self_dir);
+        }
+
+        if (envp) {
+            clearenv();
+            for (char** e = envp; *e; ++e) putenv(*e);
+        }
+
+        if (chdir(cwd) != 0) {
+            perror("chdir()");
+            fflush(stderr);
+        }
+
+        execvp(cmd, argv);
+        perror("exec()");
+        _exit(1);
+    }
+}
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_cyanmint_anbox_terminal_PtyNative_createSubprocess(
+        JNIEnv* env,
+        jclass /* clazz */,
+        jstring cmd,
+        jstring cwd,
+        jobjectArray args,
+        jobjectArray envVars,
+        jintArray processIdArray,
+        jint rows,
+        jint columns) {
+    jsize size = args ? env->GetArrayLength(args) : 0;
+    char** argv = nullptr;
+    if (size > 0) {
+        argv = (char**) malloc((size + 1) * sizeof(char*));
+        for (int i = 0; i < size; ++i) {
+            auto arg_java_string = (jstring) env->GetObjectArrayElement(args, i);
+            char const* arg_utf8 = env->GetStringUTFChars(arg_java_string, nullptr);
+            argv[i] = strdup(arg_utf8);
+            env->ReleaseStringUTFChars(arg_java_string, arg_utf8);
+        }
+        argv[size] = nullptr;
+    }
+
+    size = envVars ? env->GetArrayLength(envVars) : 0;
+    char** envp = nullptr;
+    if (size > 0) {
+        envp = (char**) malloc((size + 1) * sizeof(char*));
+        for (int i = 0; i < size; ++i) {
+            auto env_java_string = (jstring) env->GetObjectArrayElement(envVars, i);
+            char const* env_utf8 = env->GetStringUTFChars(env_java_string, nullptr);
+            envp[i] = strdup(env_utf8);
+            env->ReleaseStringUTFChars(env_java_string, env_utf8);
+        }
+        envp[size] = nullptr;
+    }
+
+    int procId = 0;
+    char const* cmd_cwd = env->GetStringUTFChars(cwd, nullptr);
+    char const* cmd_utf8 = env->GetStringUTFChars(cmd, nullptr);
+    int ptm = pty_create_subprocess(env, cmd_utf8, cmd_cwd, argv, envp, &procId, rows, columns);
+    env->ReleaseStringUTFChars(cmd, cmd_utf8);
+    env->ReleaseStringUTFChars(cwd, cmd_cwd);
+
+    if (argv) {
+        for (char** tmp = argv; *tmp; ++tmp) free(*tmp);
+        free(argv);
+    }
+    if (envp) {
+        for (char** tmp = envp; *tmp; ++tmp) free(*tmp);
+        free(envp);
+    }
+
+    if (ptm >= 0) {
+        jint* pProcId = env->GetIntArrayElements(processIdArray, nullptr);
+        pProcId[0] = procId;
+        env->ReleaseIntArrayElements(processIdArray, pProcId, 0);
+    }
+
+    return ptm;
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cyanmint_anbox_terminal_PtyNative_setWindowSize(
+        JNIEnv* /* env */, jclass /* clazz */, jint fd, jint rows, jint columns) {
+    struct winsize sz = { .ws_row = (unsigned short) rows, .ws_col = (unsigned short) columns };
+    ioctl(fd, TIOCSWINSZ, &sz);
+}
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_cyanmint_anbox_terminal_PtyNative_waitFor(
+        JNIEnv* /* env */, jclass /* clazz */, jint pid) {
+    int status;
+    waitpid(pid, &status, 0);
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    if (WIFSIGNALED(status)) return -WTERMSIG(status);
+    return 0;
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cyanmint_anbox_terminal_PtyNative_closeFd(
+        JNIEnv* /* env */, jclass /* clazz */, jint fd) {
+    close(fd);
 }

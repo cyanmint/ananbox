@@ -1,4 +1,4 @@
-package com.cyanmint.anbox
+package io.github.miuzarte.scrcpyforandroid.container
 
 import android.system.Os
 import android.util.Log
@@ -7,9 +7,9 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import java.io.File
 import java.io.FileOutputStream
 
-/** Extracts a rootfs tarball into a destination directory. Used for manual ROM import. */
-object RomImporter {
-    private const val TAG = "RomImporter"
+/** Extracts a rootfs tarball into a destination directory. Used for manual rootfs import. */
+object ContainerRomImporter {
+    private const val TAG = "ContainerRomImporter"
 
     fun extractRootfs(tarFile: File, destDir: File) {
         destDir.mkdirs()
